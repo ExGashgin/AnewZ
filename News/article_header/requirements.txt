@@ -1,0 +1,13 @@
+⚠️ Critical Rules for Success
+Exact Naming: The file must be all lowercase: requirements.txt. If you name it Requirements.txt (capital R), Streamlit will not see it.
+
+No Extra Imports: Do not include things like os, time, or ssl in this file. These are built into Python and adding them will break the installation process.
+
+File Location: This file must be in the same folder as your app.py. If your code is in /article_header/app.py, the requirements file must also be inside /article_header/.
+
+🚀 Troubleshooting the "Installer Error"
+If you push this file and the app still says "Error installing requirements," follow these steps:
+
+Change Python Version: In the Streamlit "Manage app" sidebar, go to Settings -> Advanced and set the Python version to 3.11 or 3.10. Newer versions (3.12+) are often incompatible with newspaper3k.
+
+Reboot: After saving the settings, click the three dots ⋮ in the sidebar and select Reboot app. This forces a clean start.
