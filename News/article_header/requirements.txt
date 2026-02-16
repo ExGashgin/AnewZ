@@ -1,4 +1,4 @@
-streamlit & pandas: Essential for the web interface and data table management.
-newspaper3k: The core library for extracting article text and metadata.
-lxml_html_clean & lxml==4.9.4: This is the "Compatibility Duo." Newer versions of lxml removed the HTML cleaner that newspaper3k relies on. Pinning version 4.9.4 is the industry-standard fix to keep your app from crashing.
-nltk: Required for the .nlp() function to generate keywords and summaries.
+streamlit & pandas
+newspaper3k
+lxml_html_clean & lxml==4.9.4
+nltk
