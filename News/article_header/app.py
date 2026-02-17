@@ -1,92 +1,109 @@
 import streamlit as st
 import pandas as pd
-from newspaper import Article, Config
-import nltk
-import time
+import requests
+import re # We use Regular Expressions to find hashtags
+from bs4 import BeautifulSoup
+from concurrent.futures import ThreadPoolExecutor
 
-# 1. Page Setup
-st.set_page_config(page_title="News Genre Extractor", page_icon="📂", layout="wide")
+st.set_page_config(page_title="Social Media Intelligence", page_icon="📈", layout="wide")
 
-@st.cache_resource
-def load_nltk():
+# 1. GENRE BRAIN
+GENRE_MAP = {
+    "Politics": ["election", "president", "minister", "parliament", "government", "protest"],
+    "Economy": ["oil", "gas", "price", "business", "market", "finance", "bank", "dollar"],
+    "Sports": ["football", "goal", "match", "league", "win", "player", "tournament"],
+    "Region": ["baku", "caucasus", "tbilisi", "karabakh", "central asia"]
+}
+
+def detect_genre(text):
+    if not text or text == "Not_specified": return "Not_specified"
+    text_lower = text.lower()
+    for genre, keywords in GENRE_MAP.items():
+        if any(word in text_lower for word in keywords):
+            return genre
+    return "General"
+
+# 2. HASHTAG EXTRACTOR FUNCTION
+def get_hashtags(text):
+    if not text or text == "Not_specified":
+        return "Not_specified"
+    # This regex looks for # followed by letters/numbers
+    tags = re.findall(r"#(\w+)", text)
+    return ", ".join(tags) if tags else "Not_specified"
+
+# 3. UNIVERSAL EXTRACTION ENGINE
+def extract_metadata(url):
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/119.0.0.0"}
+    content = "Not_specified"
+    source = "Unknown"
+    
+    # Identify Platform
+    for s in ["facebook", "instagram", "twitter", "x.com", "youtube", "youtu.be", "tiktok"]:
+        if s in url.lower(): source = s.capitalize()
+
     try:
-        nltk.download('punkt')
-        nltk.download('punkt_tab')
+        # TikTok Special Handling (oEmbed)
+        if "tiktok.com" in url:
+            resp = requests.get(f"https://www.tiktok.com/oembed?url={url}", timeout=5)
+            if resp.status_code == 200:
+                content = resp.json().get('title', 'Not_specified')
+        else:
+            # Universal Meta Tag Handling
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                og_desc = soup.find("meta", property="og:description")
+                og_title = soup.find("meta", property="og:title")
+                
+                if og_desc: content = og_desc["content"]
+                elif og_title: content = og_title["content"]
+                elif soup.title: content = soup.title.string
     except:
         pass
 
-load_nltk()
+    # Ensure "Not_specified" consistency
+    if not content or "Login" in content or len(content) < 5:
+        content = "Not_specified"
 
-st.title("📂 News Path & Genre Extractor")
-st.write("Extract metadata and automatically detect the news genre from the URL path.")
+    return {
+        "Source": source,
+        "Genre": detect_genre(content),
+        "Hashtags": get_hashtags(content), # NEW COLUMN
+        "Title": content,
+        "URL": url
+    }
 
-# 2. INPUT SECTION
-col_a, col_b = st.columns([1, 2])
+# 4. STREAMLIT UI
+st.title("📈 Social Media Intelligence Dashboard")
+st.write("Extracting Titles, Genres, and Hashtags from any social link.")
 
-with col_a:
-    base_url = st.text_input("Base Domain:", value="https://anewz.tv")
+urls_text = st.text_area("Paste URLs (one per line):", height=200)
 
-with col_b:
-    paths_text = st.text_area("Paste Page Paths:", 
-                              height=150, 
-                              placeholder="/region/south-caucasus/article-123\n/economy/global/article-456")
-
-# 3. EXTRACTION LOGIC
-if st.button("Extract Data & Detect Genre"):
-    base_url = base_url.strip().rstrip('/')
-    path_list = [p.strip() for p in paths_text.split('\n') if p.strip()]
-    
-    if path_list:
+if st.button("🚀 Process Intelligence Report"):
+    urls = [u.strip() for u in urls_text.split('\n') if u.strip()]
+    if urls:
         results = []
-        progress_bar = st.progress(0)
+        progress = st.progress(0)
         
-        config = Config()
-        config.browser_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/119.0.0.0 Safari/537.36'
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(extract_metadata, url) for url in urls]
+            for i, f in enumerate(futures):
+                res = f.result()
+                if res: results.append(res)
+                progress.progress((i + 1) / len(urls))
+
+        df = pd.DataFrame(results)
         
-        for i, path in enumerate(path_list):
-            clean_path = path if path.startswith('/') else '/' + path
-            full_url = f"{base_url}{clean_path}"
-            
-            # --- GENRE DETECTION LOGIC ---
-            # We split the path by '/' and take the first real word
-            # Example: /region/south-caucasus/ -> [' ', 'region', 'south-caucasus']
-            path_parts = [part for part in clean_path.split('/') if part]
-            detected_genre = path_parts[0].capitalize() if path_parts else "General"
-            
-            try:
-                article = Article(full_url, config=config)
-                article.download()
-                article.parse()
-                article.nlp()
-                
-                results.append({
-                    "Genre": detected_genre, # The new column
-                    "Title": article.title,
-                    "Author": ", ".join(article.authors) if article.authors else "N/A",
-                    "Date": article.publish_date,
-                    "Keywords": ", ".join(article.keywords[:5]),
-                    "Summary": article.summary[:150] + "...",
-                    "Full URL": full_url
-                })
-            except Exception as e:
-                st.error(f"Error on path {clean_path}: {e}")
-            
-            progress_bar.progress((i + 1) / len(path_list))
-            time.sleep(0.3)
+        # Summary View
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Genre Summary")
+            st.table(df['Genre'].value_counts())
+        with col2:
+            st.subheader("Platform Source")
+            st.bar_chart(df['Source'].value_counts())
 
-        # 4. RESULTS DISPLAY
-        if results:
-            st.success(f"Successfully processed {len(results)} articles!")
-            df = pd.DataFrame(results)
-            
-            # Show a summary count of genres
-            st.subheader("Articles by Genre")
-            st.bar_chart(df['Genre'].value_counts())
-            
-            # Show the main table
-            st.dataframe(df, use_container_width=True)
-
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download All as CSV", csv, "news_with_genres.csv", "text/csv")
-    else:
-        st.warning("Please enter at least one path.")
+        # Main Data Table
+        st.subheader("Extracted Intelligence")
+        st.dataframe(df, use_container_width=True)
+        st.download_button("📥 Export CSV", df.to_csv(index=False), "social_intelligence.csv")
