@@ -14,14 +14,15 @@ GENRE_MAP = {
     "Region": ["baku", "caucasus", "tbilisi", "karabakh", "central asia"]
 }
 
-def detect_genre(text):
-    if not text or text == "Not_specified":
-        return "Not_specified"
-    
-    text_lower = text.lower()
-    for genre, keywords in GENRE_MAP.items():
-        if any(word in text_lower for word in keywords):
-            return genre
+def detect_genre_from_x_url(url):
+    url_lower = url.lower()
+    # Check for specific known news handles or keywords in the path
+    if any(word in url_lower for word in ["politics", "gov", "whitehouse"]):
+        return "Politics"
+    if any(word in url_lower for word in ["crypto", "finance", "market"]):
+        return "Economy"
+    if any(word in url_lower for word in ["espn", "nfl", "fifa", "nba"]):
+        return "Sports"
     return "General"
 
 # 2. FACEBOOK METADATA FUNCTION
