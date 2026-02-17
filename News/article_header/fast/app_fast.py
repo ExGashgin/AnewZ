@@ -1,71 +1,76 @@
 import streamlit as st
 import pandas as pd
 from newspaper import Article, Config
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor # This is the "Speed" engine
 import nltk
+import time
 
-st.set_page_config(page_title="Ultra-Fast Scraper", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="High-Speed Scraper", page_icon="⚡", layout="wide")
 
+# Standard setup
 @st.cache_resource
-def setup_nltk():
+def load_nltk():
     nltk.download('punkt_tab', quiet=True)
+load_nltk()
 
-setup_nltk()
-
-# --- OPTIMIZED FAST FUNCTION ---
-def ultra_fast_scrape(full_url, config):
+# --- THE FAST EXTRACTION FUNCTION ---
+def fast_scrape(full_url, config):
     try:
-        # We only download and parse; we SKIP nlp() to save 80% of time
         article = Article(full_url, config=config)
         article.download()
         article.parse()
+        article.nlp()
+        
+        # Genre detection logic
+        path_parts = [p for p in full_url.split('/') if p]
+        genre = path_parts[2].capitalize() if len(path_parts) > 2 else "News"
         
         return {
+            "Genre": genre,
             "Title": article.title,
             "Date": article.publish_date,
+            "Summary": article.summary[:150] + "...",
             "URL": full_url
         }
     except:
         return None
 
 # --- UI ---
-st.title("🚀 Ultra-Fast Bulk Scraper")
+st.title("⚡ High-Speed Bulk Scraper")
 base_url = st.text_input("Base Domain:", value="https://anewz.tv").strip().rstrip('/')
-paths_text = st.text_area("Paste 1,000+ Paths:", height=200)
+paths_text = st.text_area("Paste 1,000+ Paths here:", height=200)
 
-# ADVANCED SPEED SETTINGS
-t_col1, t_col2 = st.columns(2)
-with t_col1:
-    threads = st.select_slider("Speed (Threads)", options=[10, 20, 50, 100], value=50)
-with t_col2:
-    skip_nlp = st.checkbox("Skip NLP (Summary/Keywords) for 5x Speed", value=True)
+# Speed Setting
+num_threads = st.slider("How many simultaneous connections? (Speed)", 5, 50, 20)
 
-if st.button("⚡ Start Ultra-Fast Extraction"):
+if st.button("🚀 Start High-Speed Extraction"):
     paths = [p.strip() for p in paths_text.split('\n') if p.strip()]
     if paths:
-        # CONFIGURATION FOR SPEED
         config = Config()
-        config.browser_user_agent = 'Mozilla/5.0'
-        config.fetch_images = False  # DO NOT download images (Huge speed boost!)
-        config.memoize_articles = False
-        config.request_timeout = 5   # Don't wait more than 5 seconds per link
+        config.browser_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/119.0.0.0'
+        config.request_timeout = 10
         
         urls = [f"{base_url}{'/' if not p.startswith('/') else ''}{p}" for p in paths]
-        results = []
         
+        results = []
+        progress_bar = st.progress(0)
         status = st.empty()
-        progress = st.progress(0)
 
-        with ThreadPoolExecutor(max_workers=threads) as executor:
-            # Launch all requests at once
-            futures = [executor.submit(ultra_fast_scrape, url, config) for url in urls]
+        # START MULTITHREADING
+        with ThreadPoolExecutor(max_workers=num_threads) as executor:
+            # Map the function to all URLs across many threads
+            futures = [executor.submit(fast_scrape, url, config) for url in urls]
             
-            for i, f in enumerate(futures):
-                res = f.result()
-                if res: results.append(res)
-                if i % 10 == 0: # Update UI every 10 articles to save browser memory
-                    progress.progress((i + 1) / len(urls))
-                    status.text(f"🚀 Speed: {i+1}/{len(urls)} processed...")
+            for i, future in enumerate(futures):
+                res = future.result()
+                if res:
+                    results.append(res)
+                # Update UI every few articles
+                progress_bar.progress((i + 1) / len(urls))
+                status.text(f"Processed {i+1} of {len(urls)}...")
 
-        st.success(f"Finished! Processed {len(urls)} links.")
-        st.dataframe(pd.DataFrame(results))
+        if results:
+            df = pd.DataFrame(results)
+            st.success(f"Finished! Extracted {len(results)} articles.")
+            st.dataframe(df)
+            st.download_button("📥 Download Excel/CSV", df.to_csv(index=False), "bulk_data.csv")
