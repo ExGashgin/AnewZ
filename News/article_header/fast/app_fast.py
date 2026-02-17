@@ -1,55 +1,78 @@
 import streamlit as st
 import pandas as pd
-import requests
 from newspaper import Article, Config
 from concurrent.futures import ThreadPoolExecutor
+import nltk
 
-# --- SUPER SLIM SCRAPER ---
-def ultra_fast_extract(url, config):
+st.set_page_config(page_title="Bulk URL Scraper", page_icon="🚀", layout="wide")
+
+@st.cache_resource
+def setup_nltk():
+    nltk.download('punkt_tab', quiet=True)
+setup_nltk()
+
+# --- THE FAST SCRAPE FUNCTION ---
+def fast_scrape_url(url, config):
     try:
-        # TIKTOK / YOUTUBE FAST PATH
-        if any(x in url for x in ['tiktok.com', 'youtube.com', 'youtu.be']):
-            # Use oEmbed for instant results on video platforms
-            api_url = f"https://www.tiktok.com/oembed?url={url}" if 'tiktok' in url else f"https://www.youtube.com/oembed?url={url}&format=json"
-            data = requests.get(api_url, timeout=3).json()
-            title = data.get('title', 'Not_specified')
-            return {"Genre": "Video", "Title": title, "URL": url}
-
-        # NEWS ARTICLE FAST PATH
+        # We only download and parse; we SKIP nlp() to save 80% of time
         article = Article(url, config=config)
         article.download()
         article.parse()
-        # We completely skip NLP and images here
+        
         return {
-            "Genre": "General", 
-            "Title": article.title if article.title else "Not_specified", 
+            "Title": article.title,
+            "Author": ", ".join(article.authors) if article.authors else "N/A",
+            "Date": article.publish_date,
             "URL": url
         }
     except:
-        return {"Genre": "Not_specified", "Title": "Not_specified", "URL": url}
+        return None
 
-# --- UI ---
-st.title("⚡ Extreme Speed Scraper")
-urls_text = st.text_area("Paste 10,000+ URLs:", height=200)
+# --- UI INTERFACE ---
+st.title("🚀 Ultra-Fast Bulk URL Scraper")
+st.write("Paste your list of full URLs below for high-speed extraction.")
 
-if st.button("🚀 Start High-Velocity Extraction"):
-    urls = [u.strip() for u in urls_text.split('\n') if u.strip()]
-    if urls:
-        # OPTIMIZED CONFIG
-        conf = Config()
-        conf.fetch_images = False
-        conf.request_timeout = 4  # Don't get stuck on slow sites
-        conf.browser_user_agent = 'Mozilla/5.0'
+urls_text = st.text_area("Paste URLs (one per line):", height=250, placeholder="https://bbc.com/news1\nhttps://cnn.com/news2")
+
+# Speed Slider
+threads = st.select_slider("Speed Level (Connections)", options=[5, 10, 20, 50, 100], value=50)
+
+if st.button("⚡ Start Bulk Extraction"):
+    url_list = [u.strip() for u in urls_text.split('\n') if u.strip()]
+    
+    if url_list:
+        # CONFIGURATION FOR MAXIMUM SPEED
+        config = Config()
+        config.browser_user_agent = 'Mozilla/5.0'
+        config.fetch_images = False      # SPEED BOOST: Don't download pictures
+        config.request_timeout = 7       # Move on if a site is slow
+        config.memoize_articles = False  # Don't waste memory on caching
         
         results = []
         progress = st.progress(0)
-        
-        # Use ThreadPool with a controlled worker count
-        with ThreadPoolExecutor(max_workers=25) as executor:
-            futures = [executor.submit(ultra_fast_extract, url, conf) for url in urls]
+        status = st.empty()
+
+        # RUNNING IN PARALLEL
+        with ThreadPoolExecutor(max_workers=threads) as executor:
+            futures = [executor.submit(fast_scrape_url, url, config) for url in url_list]
+            
             for i, f in enumerate(futures):
-                results.append(f.result())
-                if i % 20 == 0: # Update UI less often to save speed
-                    progress.progress((i + 1) / len(urls))
-        
-        st.dataframe(pd.DataFrame(results))
+                res = f.result()
+                if res:
+                    results.append(res)
+                
+                # Update progress every 5 articles to save browser memory
+                if i % 5 == 0 or i == len(url_list)-1:
+                    progress.progress((i + 1) / len(url_list))
+                    status.text(f"Processed {i+1} of {len(url_list)}...")
+
+        # DISPLAY TABLE
+        if results:
+            df = pd.DataFrame(results)
+            st.success(f"Successfully extracted {len(results)} articles!")
+            st.dataframe(df, use_container_width=True)
+            
+            # EXPORT
+            st.download_button("📥 Download Results (CSV)", df.to_csv(index=False), "bulk_urls.csv")
+    else:
+        st.warning("Please paste some URLs first.")
