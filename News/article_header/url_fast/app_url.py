@@ -1,59 +1,57 @@
 import streamlit as st
 import pandas as pd
-from newspaper import Article, Config
-import nltk
-import re
+import requests
+from concurrent.futures import ThreadPoolExecutor
 
-# Standard setup
-@st.cache_resource
-def setup_nltk():
-    nltk.download('punkt_tab', quiet=True)
-setup_nltk()
+st.set_page_config(page_title="TikTok Bulk Extractor", page_icon="🎵", layout="wide")
 
-def get_smart_metadata(url, config):
+def get_tiktok_data(url):
+    """Uses TikTok oEmbed API to get clean metadata without scraping HTML"""
     try:
-        article = Article(url, config=config)
-        article.download()
-        article.parse()
+        # The oEmbed endpoint is the secret to fast, clean titles
+        api_url = f"https://www.tiktok.com/oembed?url={url}"
+        response = requests.get(api_url, timeout=5)
         
-        # 1. FIXED TITLE LOGIC: 
-        # If the title is too short or generic, we try to grab it from keywords
-        title = article.title
-        if "TikTok" in title or len(title) < 5:
-            # Fallback: Use the first few words of the actual text
-            title = " ".join(article.text.split()[:10]) + "..." if article.text else title
+        if response.status_code == 200:
+            data = response.json()
+            # Title is usually the caption. We clean it for the 'Genre'
+            title = data.get('title', 'N/A')
+            author = data.get('author_name', 'N/A')
+            
+            # Simple Genre Logic: Extract first hashtag or word
+            genre = "Video"
+            if "#" in title:
+                genre = title.split("#")[1].split()[0].capitalize()
+            
+            return {
+                "Genre": genre,
+                "Title": title,
+                "Author": author,
+                "URL": url
+            }
+    except Exception:
+        pass
+    return None
 
-        # 2. ENHANCED GENRE LOGIC:
-        # We look at the URL first, then keywords as a backup
-        path_parts = [p for p in url.split('/') if p]
-        genre = "General"
-        
-        if len(path_parts) > 3: # Checking URL path first
-            genre = path_parts[2].capitalize()
-        elif article.keywords: # If URL fails, use the top AI keyword
-            genre = article.keywords[0].capitalize()
+st.title("🎵 TikTok High-Speed Metadata Extractor")
+urls_text = st.text_area("Paste TikTok URLs (one per line):", height=200)
 
-        return {
-            "Genre": genre,
-            "Title": title,
-            "URL": url
-        }
-    except:
-        return None
-
-# --- UI ---
-st.title("📰 Smart News & Video Extractor")
-urls_text = st.text_area("Paste URLs here (one per line):", height=200)
-
-if st.button("Extract Smart Data"):
+if st.button("🚀 Extract Video Titles"):
     urls = [u.strip() for u in urls_text.split('\n') if u.strip()]
     if urls:
-        config = Config()
-        config.browser_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/119.0.0.0'
-        
         results = []
-        for url in urls:
-            res = get_smart_metadata(url, config)
-            if res: results.append(res)
+        progress = st.progress(0)
         
-        st.dataframe(pd.DataFrame(results), use_container_width=True)
+        # Use 20 threads (TikTok's oEmbed is rate-limited, don't go too fast)
+        with ThreadPoolExecutor(max_workers=20) as executor:
+            futures = [executor.submit(get_tiktok_data, url) for url in urls]
+            for i, f in enumerate(futures):
+                res = f.result()
+                if res: results.append(res)
+                progress.progress((i + 1) / len(urls))
+
+        if results:
+            df = pd.DataFrame(results)
+            st.success(f"Extracted {len(results)} video titles!")
+            st.dataframe(df, use_container_width=True)
+            st.download_button("📥 Download CSV", df.to_csv(index=False), "tiktok_data.csv")
