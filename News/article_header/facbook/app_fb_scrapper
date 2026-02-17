@@ -1,71 +1,106 @@
 import streamlit as st
 import pandas as pd
-from newspaper import Article, Config
+import requests
+from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor
-import nltk
 
-st.set_page_config(page_title="Ultra-Fast Scraper", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="Universal Social Categorizer", page_icon="🌐", layout="wide")
 
-@st.cache_resource
-def setup_nltk():
-    nltk.download('punkt_tab', quiet=True)
+# 1. YOUR GENRE BRAIN (Customize these keywords!)
+GENRE_MAP = {
+    "Politics": ["election", "president", "minister", "parliament", "government", "protest", "policy"],
+    "Economy": ["oil", "gas", "price", "business", "market", "finance", "bank", "dollar"],
+    "Sports": ["football", "goal", "match", "league", "win", "player", "tournament", "fifa"],
+    "Region": ["baku", "caucasus", "tbilisi", "karabakh", "central asia", "yerevan"]
+}
 
-setup_nltk()
+def detect_genre(text):
+    if not text or text == "Not_specified":
+        return "Not_specified"
+    
+    text_lower = text.lower()
+    for genre, keywords in GENRE_MAP.items():
+        if any(word in text_lower for word in keywords):
+            return genre
+    return "General"
 
-# --- OPTIMIZED FAST FUNCTION ---
-def ultra_fast_scrape(full_url, config):
+# 2. UNIVERSAL EXTRACTION ENGINE
+def extract_metadata(url):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    }
     try:
-        # We only download and parse; we SKIP nlp() to save 80% of time
-        article = Article(full_url, config=config)
-        article.download()
-        article.parse()
-        
-        return {
-            "Title": article.title,
-            "Date": article.publish_date,
-            "URL": full_url
-        }
-    except:
-        return None
+        # Step 1: Handle TikTok via its fast oEmbed API
+        if "tiktok.com" in url:
+            api_url = f"https://www.tiktok.com/oembed?url={url}"
+            resp = requests.get(api_url, timeout=5)
+            if resp.status_code == 200:
+                title = resp.json().get('title', 'Not_specified')
+                return {"Genre": detect_genre(title), "Title": title, "URL": url, "Source": "TikTok"}
 
-# --- UI ---
-st.title("🚀 Ultra-Fast Bulk Scraper")
-base_url = st.text_input("Base Domain:", value="https://anewz.tv").strip().rstrip('/')
-paths_text = st.text_area("Paste 1,000+ Paths:", height=200)
-
-# ADVANCED SPEED SETTINGS
-t_col1, t_col2 = st.columns(2)
-with t_col1:
-    threads = st.select_slider("Speed (Threads)", options=[10, 20, 50, 100], value=50)
-with t_col2:
-    skip_nlp = st.checkbox("Skip NLP (Summary/Keywords) for 5x Speed", value=True)
-
-if st.button("⚡ Start Ultra-Fast Extraction"):
-    paths = [p.strip() for p in paths_text.split('\n') if p.strip()]
-    if paths:
-        # CONFIGURATION FOR SPEED
-        config = Config()
-        config.browser_user_agent = 'Mozilla/5.0'
-        config.fetch_images = False  # DO NOT download images (Huge speed boost!)
-        config.memoize_articles = False
-        config.request_timeout = 5   # Don't wait more than 5 seconds per link
-        
-        urls = [f"{base_url}{'/' if not p.startswith('/') else ''}{p}" for p in paths]
-        results = []
-        
-        status = st.empty()
-        progress = st.progress(0)
-
-        with ThreadPoolExecutor(max_workers=threads) as executor:
-            # Launch all requests at once
-            futures = [executor.submit(ultra_fast_scrape, url, config) for url in urls]
+        # Step 2: Handle everything else via Meta Tags
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
             
+            # Look for Open Graph Tags (Standard for FB, IG, YT)
+            og_title = soup.find("meta", property="og:title")
+            og_desc = soup.find("meta", property="og:description")
+            
+            # Priority: Description (usually has more text) > Title
+            content = ""
+            if og_desc: content = og_desc["content"]
+            elif og_title: content = og_title["content"]
+            elif soup.title: content = soup.title.string
+
+            # Final Cleanup
+            if not content or len(content) < 5 or "Login" in content or "Robot" in content:
+                content = "Not_specified"
+        else:
+            content = "Not_specified"
+    except:
+        content = "Not_specified"
+
+    # Identify Platform for the table
+    source = "Unknown"
+    for s in ["facebook", "instagram", "twitter", "x.com", "youtube", "youtu.be"]:
+        if s in url.lower(): source = s.capitalize()
+
+    return {
+        "Genre": detect_genre(content),
+        "Title": content,
+        "URL": url,
+        "Source": source
+    }
+
+# 3. STREAMLIT UI
+st.title("🌐 Universal Social Media Categorizer")
+st.info("Works with Facebook, Instagram, X, TikTok, and YouTube URLs.")
+
+urls_text = st.text_area("Paste URLs (one per line):", height=200)
+
+if st.button("🚀 Process All URLs"):
+    urls = [u.strip() for u in urls_text.split('\n') if u.strip()]
+    if urls:
+        results = []
+        progress = st.progress(0)
+        
+        # Keep workers moderate to prevent IP blocking across platforms
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(extract_metadata, url) for url in urls]
             for i, f in enumerate(futures):
                 res = f.result()
                 if res: results.append(res)
-                if i % 10 == 0: # Update UI every 10 articles to save browser memory
-                    progress.progress((i + 1) / len(urls))
-                    status.text(f"🚀 Speed: {i+1}/{len(urls)} processed...")
+                progress.progress((i + 1) / len(urls))
 
-        st.success(f"Finished! Processed {len(urls)} links.")
-        st.dataframe(pd.DataFrame(results))
+        df = pd.DataFrame(results)
+        
+        # Table Summary
+        st.subheader("Summary Statistics")
+        counts = df['Genre'].value_counts().reset_index()
+        counts.columns = ['Genre', 'Count']
+        st.table(counts)
+
+        # Full Results
+        st.dataframe(df, use_container_width=True)
+        st.download_button("📥 Download CSV", df.to_csv(index=False), "universal_social_data.csv")
