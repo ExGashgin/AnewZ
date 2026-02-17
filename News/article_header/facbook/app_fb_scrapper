@@ -1,85 +1,71 @@
 import streamlit as st
 import pandas as pd
-import requests
-from bs4 import BeautifulSoup
+from newspaper import Article, Config
 from concurrent.futures import ThreadPoolExecutor
+import nltk
 
-st.set_page_config(page_title="Facebook Categorizer", page_icon="🔵", layout="wide")
+st.set_page_config(page_title="Ultra-Fast Scraper", page_icon="🚀", layout="wide")
 
-# 1. YOUR GENRE BRAIN
-GENRE_MAP = {
-    "Politics": ["election", "president", "minister", "government", "protest", "policy"],
-    "Economy": ["oil", "gas", "price", "business", "market", "finance", "bank"],
-    "Sports": ["football", "match", "league", "win", "player", "tournament"],
-    "Region": ["baku", "caucasus", "tbilisi", "karabakh", "central asia"]
-}
+@st.cache_resource
+def setup_nltk():
+    nltk.download('punkt_tab', quiet=True)
 
-def detect_genre_from_x_url(url):
-    url_lower = url.lower()
-    # Check for specific known news handles or keywords in the path
-    if any(word in url_lower for word in ["politics", "gov", "whitehouse"]):
-        return "Politics"
-    if any(word in url_lower for word in ["crypto", "finance", "market"]):
-        return "Economy"
-    if any(word in url_lower for word in ["espn", "nfl", "fifa", "nba"]):
-        return "Sports"
-    return "General"
+setup_nltk()
 
-# 2. FACEBOOK METADATA FUNCTION
-def get_facebook_data(url):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-    }
+# --- OPTIMIZED FAST FUNCTION ---
+def ultra_fast_scrape(full_url, config):
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Facebook stores the post text in the 'title' tag or 'og:description'
-            # We try og:description first as it's cleaner
-            meta_desc = soup.find("meta", property="og:description")
-            title = meta_desc["content"] if meta_desc else soup.title.string
-            
-            # If Facebook blocks us or title is just "Facebook", mark as Not_specified
-            if not title or "Facebook" in title and len(title) < 10:
-                title = "Not_specified"
-        else:
-            title = "Not_specified"
-    except:
-        title = "Not_specified"
-
-    return {
-        "Genre": detect_genre(title),
-        "Title": title,
-        "URL": url
-    }
-
-# 3. STREAMLIT UI
-st.title("🔵 Facebook Post Categorizer")
-urls_text = st.text_area("Paste Facebook Post URLs (one per line):", height=200)
-
-if st.button("🚀 Process Facebook Posts"):
-    urls = [u.strip() for u in urls_text.split('\n') if u.strip()]
-    if urls:
-        results = []
-        progress = st.progress(0)
+        # We only download and parse; we SKIP nlp() to save 80% of time
+        article = Article(full_url, config=config)
+        article.download()
+        article.parse()
         
-        # Keep workers low for Facebook (3-5) to avoid getting banned
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [executor.submit(get_facebook_data, url) for url in urls]
+        return {
+            "Title": article.title,
+            "Date": article.publish_date,
+            "URL": full_url
+        }
+    except:
+        return None
+
+# --- UI ---
+st.title("🚀 Ultra-Fast Bulk Scraper")
+base_url = st.text_input("Base Domain:", value="https://anewz.tv").strip().rstrip('/')
+paths_text = st.text_area("Paste 1,000+ Paths:", height=200)
+
+# ADVANCED SPEED SETTINGS
+t_col1, t_col2 = st.columns(2)
+with t_col1:
+    threads = st.select_slider("Speed (Threads)", options=[10, 20, 50, 100], value=50)
+with t_col2:
+    skip_nlp = st.checkbox("Skip NLP (Summary/Keywords) for 5x Speed", value=True)
+
+if st.button("⚡ Start Ultra-Fast Extraction"):
+    paths = [p.strip() for p in paths_text.split('\n') if p.strip()]
+    if paths:
+        # CONFIGURATION FOR SPEED
+        config = Config()
+        config.browser_user_agent = 'Mozilla/5.0'
+        config.fetch_images = False  # DO NOT download images (Huge speed boost!)
+        config.memoize_articles = False
+        config.request_timeout = 5   # Don't wait more than 5 seconds per link
+        
+        urls = [f"{base_url}{'/' if not p.startswith('/') else ''}{p}" for p in paths]
+        results = []
+        
+        status = st.empty()
+        progress = st.progress(0)
+
+        with ThreadPoolExecutor(max_workers=threads) as executor:
+            # Launch all requests at once
+            futures = [executor.submit(ultra_fast_scrape, url, config) for url in urls]
+            
             for i, f in enumerate(futures):
                 res = f.result()
                 if res: results.append(res)
-                progress.progress((i + 1) / len(urls))
+                if i % 10 == 0: # Update UI every 10 articles to save browser memory
+                    progress.progress((i + 1) / len(urls))
+                    status.text(f"🚀 Speed: {i+1}/{len(urls)} processed...")
 
-        df = pd.DataFrame(results)
-        
-        # Summary Table
-        st.subheader("Summary Statistics")
-        summary = df['Genre'].value_counts().reset_index()
-        summary.columns = ['Genre', 'Count']
-        st.table(summary)
-
-        # Full Data
-        st.dataframe(df, use_container_width=True)
-        st.download_button("📥 Download CSV", df.to_csv(index=False), "facebook_data.csv")
+        st.success(f"Finished! Processed {len(urls)} links.")
+        st.dataframe(pd.DataFrame(results))
