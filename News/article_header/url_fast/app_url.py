@@ -1,77 +1,59 @@
 import streamlit as st
 import pandas as pd
 from newspaper import Article, Config
-from concurrent.futures import ThreadPoolExecutor
 import nltk
+import re
 
-st.set_page_config(page_title="Bulk URL Scraper", page_icon="🚀", layout="wide")
-
+# Standard setup
 @st.cache_resource
 def setup_nltk():
     nltk.download('punkt_tab', quiet=True)
 setup_nltk()
 
-# --- THE FAST SCRAPE FUNCTION ---
-def fast_scrape_url(url, config):
+def get_smart_metadata(url, config):
     try:
         article = Article(url, config=config)
         article.download()
         article.parse()
-        # We skip NLP (summary/keywords) for speed, but keep title/date/authors
+        
+        # 1. FIXED TITLE LOGIC: 
+        # If the title is too short or generic, we try to grab it from keywords
+        title = article.title
+        if "TikTok" in title or len(title) < 5:
+            # Fallback: Use the first few words of the actual text
+            title = " ".join(article.text.split()[:10]) + "..." if article.text else title
+
+        # 2. ENHANCED GENRE LOGIC:
+        # We look at the URL first, then keywords as a backup
+        path_parts = [p for p in url.split('/') if p]
+        genre = "General"
+        
+        if len(path_parts) > 3: # Checking URL path first
+            genre = path_parts[2].capitalize()
+        elif article.keywords: # If URL fails, use the top AI keyword
+            genre = article.keywords[0].capitalize()
+
         return {
-            "Title": article.title,
-            "Author": ", ".join(article.authors) if article.authors else "N/A",
-            "Date": article.publish_date,
+            "Genre": genre,
+            "Title": title,
             "URL": url
         }
     except:
         return None
 
-# --- UI INTERFACE ---
-st.title("🚀 Ultra-Fast Bulk URL Scraper")
-st.write("Paste your list of full URLs below for high-speed extraction.")
+# --- UI ---
+st.title("📰 Smart News & Video Extractor")
+urls_text = st.text_area("Paste URLs here (one per line):", height=200)
 
-urls_text = st.text_area("Paste URLs (one per line):", height=250, placeholder="https://bbc.com/news1\nhttps://cnn.com/news2")
-
-# Speed Slider
-threads = st.select_slider("Speed Level (Connections)", options=[5, 10, 20, 50, 100], value=50)
-
-if st.button("⚡ Start Bulk Extraction"):
-    url_list = [u.strip() for u in urls_text.split('\n') if u.strip()]
-    
-    if url_list:
-        # CONFIGURATION FOR MAXIMUM SPEED
+if st.button("Extract Smart Data"):
+    urls = [u.strip() for u in urls_text.split('\n') if u.strip()]
+    if urls:
         config = Config()
-        config.browser_user_agent = 'Mozilla/5.0'
-        config.fetch_images = False      # SPEED BOOST: Don't download pictures
-        config.request_timeout = 7       # Move on if a site is slow
-        config.memoize_articles = False  # Don't waste memory on caching
+        config.browser_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/119.0.0.0'
         
         results = []
-        progress = st.progress(0)
-        status = st.empty()
-
-        # RUNNING IN PARALLEL
-        with ThreadPoolExecutor(max_workers=threads) as executor:
-            futures = [executor.submit(fast_scrape_url, url, config) for url in url_list]
-            
-            for i, f in enumerate(futures):
-                res = f.result()
-                if res:
-                    results.append(res)
-                
-                # Update progress every 5 articles
-                if i % 5 == 0 or i == len(url_list)-1:
-                    progress.progress((i + 1) / len(url_list))
-                    status.text(f"Processed {i+1} of {len(url_list)}...")
-
-        # DISPLAY TABLE
-        if results:
-            df = pd.DataFrame(results)
-            st.success(f"Successfully extracted {len(results)} articles!")
-            st.dataframe(df, use_container_width=True)
-            
-            # EXPORT
-            st.download_button("📥 Download Results (CSV)", df.to_csv(index=False), "bulk_urls.csv")
-    else:
-        st.warning("Please paste some URLs first.")
+        for url in urls:
+            res = get_smart_metadata(url, config)
+            if res: results.append(res)
+        
+        st.dataframe(pd.DataFrame(results), use_container_width=True)
