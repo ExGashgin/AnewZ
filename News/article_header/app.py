@@ -9,16 +9,22 @@ st.set_page_config(page_title="Social Media Intelligence", page_icon="📈", lay
 
 # 1. GENRE BRAIN
 GENRE_MAP = {
-    "Politics": ["election", "president", "minister", "parliament", "government", "protest"],
-    "Economy": ["oil", "gas", "price", "business", "market", "finance", "bank", "dollar"],
-    "Sports": ["football", "goal", "match", "league", "win", "player", "tournament"],
-    "Region": ["baku", "caucasus", "tbilisi", "karabakh", "central asia"]
+    "World": ["un", "nato", "global", "international", "world", "foreign", "peace", "treaty", "diplomacy", "summit"],
+    "Politics": ["election", "president", "minister", "parliament", "government", "protest", "policy"],
+    "Economy": ["oil", "gas", "price", "business", "market", "finance", "bank", "dollar", "crypto"],
+    "Sports": ["football", "goal", "match", "league", "win", "player", "tournament", "fifa"],
+    "Technology": ["ai", "tech", "software", "google", "meta", "cyber", "robot", "space"],
+    "Health": ["virus", "health", "doctor", "medicine", "covid", "vaccine", "fitness"],
+    "Region": ["baku", "caucasus", "tbilisi", "karabakh", "central asia", "yerevan"]
 }
 
 def detect_genre(text):
-    if not text or text == "Not_specified": return "Not_specified"
+    if not text or text == "Not_specified":
+        return "Not_specified"
+    
     text_lower = text.lower()
     for genre, keywords in GENRE_MAP.items():
+        # This checks if any keyword from the list is in the post title
         if any(word in text_lower for word in keywords):
             return genre
     return "General"
