@@ -1,0 +1,84 @@
+import streamlit as st
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+from concurrent.futures import ThreadPoolExecutor
+
+st.set_page_config(page_title="Facebook Categorizer", page_icon="🔵", layout="wide")
+
+# 1. YOUR GENRE BRAIN
+GENRE_MAP = {
+    "Politics": ["election", "president", "minister", "government", "protest", "policy"],
+    "Economy": ["oil", "gas", "price", "business", "market", "finance", "bank"],
+    "Sports": ["football", "match", "league", "win", "player", "tournament"],
+    "Region": ["baku", "caucasus", "tbilisi", "karabakh", "central asia"]
+}
+
+def detect_genre(text):
+    if not text or text == "Not_specified":
+        return "Not_specified"
+    
+    text_lower = text.lower()
+    for genre, keywords in GENRE_MAP.items():
+        if any(word in text_lower for word in keywords):
+            return genre
+    return "General"
+
+# 2. FACEBOOK METADATA FUNCTION
+def get_facebook_data(url):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Facebook stores the post text in the 'title' tag or 'og:description'
+            # We try og:description first as it's cleaner
+            meta_desc = soup.find("meta", property="og:description")
+            title = meta_desc["content"] if meta_desc else soup.title.string
+            
+            # If Facebook blocks us or title is just "Facebook", mark as Not_specified
+            if not title or "Facebook" in title and len(title) < 10:
+                title = "Not_specified"
+        else:
+            title = "Not_specified"
+    except:
+        title = "Not_specified"
+
+    return {
+        "Genre": detect_genre(title),
+        "Title": title,
+        "URL": url
+    }
+
+# 3. STREAMLIT UI
+st.title("🔵 Facebook Post Categorizer")
+urls_text = st.text_area("Paste Facebook Post URLs (one per line):", height=200)
+
+if st.button("🚀 Process Facebook Posts"):
+    urls = [u.strip() for u in urls_text.split('\n') if u.strip()]
+    if urls:
+        results = []
+        progress = st.progress(0)
+        
+        # Keep workers low for Facebook (3-5) to avoid getting banned
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(get_facebook_data, url) for url in urls]
+            for i, f in enumerate(futures):
+                res = f.result()
+                if res: results.append(res)
+                progress.progress((i + 1) / len(urls))
+
+        df = pd.DataFrame(results)
+        
+        # Summary Table
+        st.subheader("Summary Statistics")
+        summary = df['Genre'].value_counts().reset_index()
+        summary.columns = ['Genre', 'Count']
+        st.table(summary)
+
+        # Full Data
+        st.dataframe(df, use_container_width=True)
+        st.download_button("📥 Download CSV", df.to_csv(index=False), "facebook_data.csv")
