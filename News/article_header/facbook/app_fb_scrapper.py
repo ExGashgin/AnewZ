@@ -1,106 +1,81 @@
 import streamlit as st
 import pandas as pd
-import requests
-from bs4 import BeautifulSoup
-from concurrent.futures import ThreadPoolExecutor
+import re
 
-st.set_page_config(page_title="Universal Social Categorizer", page_icon="🌐", layout="wide")
+st.set_page_config(page_title="Text Intelligence Dashboard", page_icon="📝", layout="wide")
 
-# 1. YOUR GENRE BRAIN (Customize these keywords!)
+# 1. UPDATED GENRE BRAIN (Expanded Categories)
 GENRE_MAP = {
-    "Politics": ["election", "president", "minister", "parliament", "government", "protest", "policy"],
+    "World": ["un", "nato", "global", "international", "world", "foreign", "diplomacy"],
+    "Politics": ["election", "president", "minister", "parliament", "government", "protest"],
     "Economy": ["oil", "gas", "price", "business", "market", "finance", "bank", "dollar"],
-    "Sports": ["football", "goal", "match", "league", "win", "player", "tournament", "fifa"],
-    "Region": ["baku", "caucasus", "tbilisi", "karabakh", "central asia", "yerevan"]
+    "Sports": ["football", "goal", "match", "league", "win", "player", "tournament"],
+    "Technology": ["ai", "tech", "software", "google", "meta", "cyber", "robot"],
+    "Region": ["baku", "caucasus", "tbilisi", "karabakh", "central asia"]
 }
 
 def detect_genre(text):
-    if not text or text == "Not_specified":
+    if not text or pd.isna(text):
         return "Not_specified"
     
-    text_lower = text.lower()
+    text_lower = str(text).lower()
     for genre, keywords in GENRE_MAP.items():
         if any(word in text_lower for word in keywords):
             return genre
     return "General"
 
-# 2. UNIVERSAL EXTRACTION ENGINE
-def extract_metadata(url):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-    }
-    try:
-        # Step 1: Handle TikTok via its fast oEmbed API
-        if "tiktok.com" in url:
-            api_url = f"https://www.tiktok.com/oembed?url={url}"
-            resp = requests.get(api_url, timeout=5)
-            if resp.status_code == 200:
-                title = resp.json().get('title', 'Not_specified')
-                return {"Genre": detect_genre(title), "Title": title, "URL": url, "Source": "TikTok"}
+def extract_hashtags(text):
+    if not text or pd.isna(text):
+        return "Not_specified"
+    tags = re.findall(r"#(\w+)", str(text))
+    return ", ".join(tags) if tags else "Not_specified"
 
-        # Step 2: Handle everything else via Meta Tags
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Look for Open Graph Tags (Standard for FB, IG, YT)
-            og_title = soup.find("meta", property="og:title")
-            og_desc = soup.find("meta", property="og:description")
-            
-            # Priority: Description (usually has more text) > Title
-            content = ""
-            if og_desc: content = og_desc["content"]
-            elif og_title: content = og_title["content"]
-            elif soup.title: content = soup.title.string
+# 2. UI INTERFACE
+st.title("📝 Post Text Categorizer")
+st.info("Paste the text content of your posts below. The app will detect the Genre and extract Hashtags instantly.")
 
-            # Final Cleanup
-            if not content or len(content) < 5 or "Login" in content or "Robot" in content:
-                content = "Not_specified"
+# Option to paste text or upload a CSV
+input_method = st.radio("Choose Input Method:", ["Paste Text", "Upload CSV"])
+
+results = []
+
+if input_method == "Paste Text":
+    texts_input = st.text_area("Paste Post Texts (one per line):", height=300)
+    if st.button("🚀 Process Text"):
+        lines = [line.strip() for line in texts_input.split('\n') if line.strip()]
+        for line in lines:
+            results.append({
+                "Genre": detect_genre(line),
+                "Hashtags": extract_hashtags(line),
+                "Post_Text": line
+            })
+
+else:
+    uploaded_file = st.file_uploader("Upload CSV (Make sure it has a column named 'Description' or 'Text')", type="csv")
+    if uploaded_file:
+        df_input = pd.read_csv(uploaded_file)
+        # Find the text column automatically
+        col_name = next((c for c in df_input.columns if c.lower() in ['description', 'text', 'post_text']), None)
+        
+        if col_name:
+            if st.button("🚀 Process File"):
+                df_input['Genre'] = df_input[col_name].apply(detect_genre)
+                df_input['Hashtags'] = df_input[col_name].apply(extract_hashtags)
+                st.dataframe(df_input)
+                st.download_button("📥 Download Results", df_input.to_csv(index=False), "processed_data.csv")
         else:
-            content = "Not_specified"
-    except:
-        content = "Not_specified"
+            st.error("Could not find a text column. Please rename your column to 'Description'.")
 
-    # Identify Platform for the table
-    source = "Unknown"
-    for s in ["facebook", "instagram", "twitter", "x.com", "youtube", "youtu.be"]:
-        if s in url.lower(): source = s.capitalize()
-
-    return {
-        "Genre": detect_genre(content),
-        "Title": content,
-        "URL": url,
-        "Source": source
-    }
-
-# 3. STREAMLIT UI
-st.title("🌐 Universal Social Media Categorizer")
-st.info("Works with Facebook, Instagram, X, TikTok, and YouTube URLs.")
-
-urls_text = st.text_area("Paste URLs (one per line):", height=200)
-
-if st.button("🚀 Process All URLs"):
-    urls = [u.strip() for u in urls_text.split('\n') if u.strip()]
-    if urls:
-        results = []
-        progress = st.progress(0)
-        
-        # Keep workers moderate to prevent IP blocking across platforms
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            futures = [executor.submit(extract_metadata, url) for url in urls]
-            for i, f in enumerate(futures):
-                res = f.result()
-                if res: results.append(res)
-                progress.progress((i + 1) / len(urls))
-
-        df = pd.DataFrame(results)
-        
-        # Table Summary
-        st.subheader("Summary Statistics")
-        counts = df['Genre'].value_counts().reset_index()
-        counts.columns = ['Genre', 'Count']
-        st.table(counts)
-
-        # Full Results
-        st.dataframe(df, use_container_width=True)
-        st.download_button("📥 Download CSV", df.to_csv(index=False), "universal_social_data.csv")
+# 3. DISPLAY RESULTS (For Paste Method)
+if results:
+    df = pd.DataFrame(results)
+    
+    # Visual Summaries
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("Genre Distribution")
+        st.table(df['Genre'].value_counts())
+    
+    st.subheader("Processed Intelligence")
+    st.dataframe(df, use_container_width=True)
+    st.download_button("📥 Download Results (CSV)", df.to_csv(index=False), "text_genres.csv")
