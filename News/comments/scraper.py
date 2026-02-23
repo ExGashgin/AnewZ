@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
 import yt_dlp
-from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import nltk
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import ssl
 
-# --- INITIALIZATION ---
+# --- 1. CLOUD-READY INITIALIZATION ---
 try:
     _create_unverified_https_context = ssl._create_unverified_context
 except AttributeError:
@@ -16,12 +16,11 @@ else:
 nltk.download('vader_lexicon')
 sia = SentimentIntensityAnalyzer()
 
-# --- GENRE BRAIN ---
+# --- 2. GENRE BRAIN ---
 GENRE_MAP = {
-    "Economy": ["oil", "gas", "price", "business", "market", "finance", "bank", "dollar"],
+    "Economy": ["oil", "gas", "price", "business", "market", "finance", "bank"],
     "Politics": ["election", "president", "minister", "parliament", "government"],
-    "World": ["un", "nato", "global", "international", "world", "foreign"],
-    "Region": ["baku", "caucasus", "tbilisi", "karabakh"]
+    "World": ["un", "nato", "global", "international", "world", "foreign"]
 }
 
 def analyze_comment(text):
@@ -35,24 +34,24 @@ def analyze_comment(text):
     label = "Positive" if score >= 0.05 else "Negative" if score <= -0.05 else "Neutral"
     return genre, score, label
 
-# --- UI LAYOUT ---
+# --- 3. DASHBOARD INTERFACE ---
 st.set_page_config(page_title="Social Intelligence", layout="wide")
-st.title("📊 Social Media Comment Intelligence")
+st.title("📊 Social Media Intelligence Dashboard")
 
-urls_input = st.text_area("Paste Video URLs (One per line):", height=100)
+urls_input = st.text_area("Enter Video URLs (TikTok/YouTube) - One per line:", height=100)
 
-if st.button("🚀 Scrape & Analyze"):
+if st.button("🚀 Analyze Comments"):
     urls = [u.strip() for u in urls_input.split('\n') if u.strip()]
     if urls:
         results = []
-        with st.spinner("Accessing social media..."):
-            # yt-dlp options specifically for cloud servers
+        with st.spinner("Scraping live data..."):
+            # Options to prevent "403 Forbidden" or "Unavailable" errors
             ydl_opts = {
                 'getcomments': True,
                 'skip_download': True,
                 'quiet': True,
-                'extractor_args': {'youtube': {'max_comments': ['50']}, 'tiktok': {'max_comments': ['50']}},
-                'player_client': ['web_safari'] # Mimics real browser to avoid 403 blocks
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'extractor_args': {'youtube': {'max_comments': ['30']}, 'tiktok': {'max_comments': ['30']}}
             }
             
             for url in urls:
@@ -69,7 +68,11 @@ if st.button("🚀 Scrape & Analyze"):
 
         if results:
             df = pd.DataFrame(results)
-            st.subheader("Sentiment vs Genre Breakdown")
+            st.subheader("Real-Time Sentiment Analysis")
+            # Create the chart
             chart_data = df.groupby(['Genre', 'Sentiment']).size().unstack().fillna(0)
             st.bar_chart(chart_data)
+            # Show the table
             st.dataframe(df, use_container_width=True)
+    else:
+        st.warning("Please paste at least one URL.")
