@@ -46,21 +46,23 @@ def scrape_video_data(url):
         'skip_download': True,
         'quiet': True,
         'extractor_args': {
-            'youtube': {'max_comments': ['30'], 'player_client': ['web_embedded', 'web']},
-            'tiktok': {'max_comments': ['30']}
+            'youtube': {'max_comments': ['50'], 'player_client': ['web']},
+            'tiktok': {'max_comments': ['50']}
         },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         }
     }
     
-    if os.path.exists("cookies.txt"):
-        ydl_opts['cookiefile'] = 'cookies.txt'
+    # CRITICAL: This line tells the scraper to use your login identity
+    if os.path.exists("News/comments/cookies.txt"):
+        ydl_opts['cookiefile'] = "News/comments/cookies.txt"
+    elif os.path.exists("cookies.txt"):
+        ydl_opts['cookiefile'] = "cookies.txt"
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         comments = info.get('comments', [])
-        # Ensure list comprehension is properly closed
         return [{"Comment": c.get('text'), "Video": info.get('title', 'Video')} for c in comments if c.get('text')]
 
 # --- 4. DASHBOARD ---
