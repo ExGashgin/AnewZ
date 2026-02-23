@@ -1,10 +1,12 @@
 import streamlit as st
-st.write("--- UI START CHECK ---")
-
+import pandas as pd
+import yt_dlp
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import nltk
 import ssl
+import time
 
-# This MUST be at the very top to prevent the LookupError/Blank Screen
+# 1. INITIALIZATION (The "Fixes")
 try:
     _create_unverified_https_context = ssl._create_unverified_context
 except AttributeError:
@@ -12,102 +14,81 @@ except AttributeError:
 else:
     ssl._create_default_https_context = _create_unverified_https_context
 
-# Download required data before doing anything else
 nltk.download('vader_lexicon')
-
-
-# Now you can safely start the UI
-st.title("My Scraper Dashboard")
-st.write("If you see this, the app is working!")
-
-import nltk
-nltk.download('vader_lexicon')
-import yt_dlp
-import pandas as pd
-from nltk.sentiment.vader import SentimentIntensityAnalyzer
-import re
-import time
-
-# --- 1. REUSE YOUR GENRE BRAIN ---
-GENRE_MAP = {
-    "World": ["un", "nato", "global", "international", "world", "foreign", "diplomacy"],
-    "Politics": ["election", "president", "minister", "parliament", "government", "protest"],
-    "Economy": ["oil", "gas", "price", "business", "market", "finance", "bank", "dollar"],
-    "Sports": ["football", "goal", "match", "league", "win", "player", "tournament"],
-    "Technology": ["ai", "tech", "software", "google", "meta", "cyber", "robot"],
-    "Region": ["baku", "caucasus", "tbilisi", "karabakh", "central asia"]
-}
-
 sia = SentimentIntensityAnalyzer()
+
+# 2. YOUR GENRE BRAIN
+GENRE_MAP = {
+    "World": ["un", "nato", "global", "international", "world", "foreign"],
+    "Politics": ["election", "president", "minister", "parliament", "government"],
+    "Economy": ["oil", "gas", "price", "business", "market", "finance", "bank"],
+    "Sports": ["football", "goal", "match", "league", "win", "player"],
+    "Technology": ["ai", "tech", "software", "google", "meta", "cyber"],
+    "Region": ["baku", "caucasus", "tbilisi", "karabakh"]
+}
 
 def analyze_comment(text):
     text_str = str(text).lower()
-    # Detect Genre
     genre = "General"
     for g, keywords in GENRE_MAP.items():
         if any(word in text_str for word in keywords):
             genre = g
             break
-    
-    # Detect Sentiment
     score = sia.polarity_scores(text_str)['compound']
     label = "Positive" if score >= 0.05 else "Negative" if score <= -0.05 else "Neutral"
-    
     return genre, score, label
 
-# --- 2. MULTI-URL SCRAPER ENGINE ---
-def scrape_and_categorize(urls):
-    all_results = []
-    
-    ydl_opts = {
-        'getcomments': True,
-        'skip_download': True,
-        'quiet': True,
-        'extractor_args': {'youtube': {'max_comments': ['all']}, 'tiktok': {'max_comments': ['all']}}
-    }
+# 3. UI LAYOUT
+st.set_page_config(page_title="Social Intelligence", layout="wide")
+st.title("📊 Social Media Comment Intelligence")
 
-    for url in urls:
-        print(f"📡 Scraping: {url}")
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                comments = info.get('comments', [])
-                video_title = info.get('title', 'Unknown Video')
+urls_input = st.text_area("Paste Video URLs (TikTok/YouTube) - One per line:", height=150)
 
-                for c in comments:
-                    comment_text = c.get('text')
-                    if comment_text:
-                        genre, score, label = analyze_comment(comment_text)
-                        all_results.append({
-                            "Video_Title": video_title,
-                            "Comment": comment_text,
-                            "Genre": genre,
-                            "Sentiment_Score": score,
-                            "Sentiment_Label": label,
-                            "URL": url
-                        })
-            time.sleep(2) # Avoid getting blocked
-        except Exception as e:
-            print(f"❌ Error on {url}: {e}")
+if st.button("🚀 Scrape & Analyze"):
+    urls = [u.strip() for u in urls_input.split('\n') if u.strip()]
+    if not urls:
+        st.warning("Please enter at least one URL.")
+    else:
+        results = []
+        with st.spinner("Accessing social media... this may take a minute."):
+            ydl_opts = {
+                'getcomments': True,
+                'skip_download': True,
+                'quiet': True,
+                'extractor_args': {'youtube': {'max_comments': ['50']}, 'tiktok': {'max_comments': ['50']}} 
+            }
+            
+            for url in urls:
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = ydl.extract_info(url, download=False)
+                        comments = info.get('comments', [])
+                        for c in comments:
+                            if c.get('text'):
+                                g, s, l = analyze_comment(c.get('text'))
+                                results.append({
+                                    "Video": info.get('title', 'Video'),
+                                    "Comment": c.get('text'),
+                                    "Genre": g,
+                                    "Sentiment": l,
+                                    "Score": s
+                                })
+                except Exception as e:
+                    st.error(f"Error scraping {url}: {e}")
 
-    return pd.DataFrame(all_results)
+        if results:
+            df = pd.DataFrame(results)
+            
+            # --- DASHBOARD VISUALS ---
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("Sentiment Breakdown")
+                st.bar_chart(df['Sentiment'].value_counts())
+            
+            with col2:
+                st.subheader("Genre Distribution")
+                st.table(df['Genre'].value_counts())
 
-# --- 3. EXECUTION ---
-url_list = [
-    "PASTE_URL_1_HERE",
-    "PASTE_URL_2_HERE"
-]
-
-if url_list[0] != "PASTE_URL_1_HERE":
-    df_final = scrape_and_categorize(url_list)
-    print(df_final.head())
-    df_final.to_csv("analyzed_comments.csv", index=False)
-    print("✅ Analysis Complete! File saved as analyzed_comments.csv")
-
-
-
-st.write("Checking UI: The script has reached the end successfully!")
-
-# ... your scraping code ...
-
-st.write("--- UI END CHECK ---")
+            st.subheader("Detailed Analysis")
+            st.dataframe(df, use_container_width=True)
+            st.download_button("📥 Download Results", df.to_csv(index=False), "analysis.csv")
