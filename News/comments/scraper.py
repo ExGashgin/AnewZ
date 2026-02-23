@@ -21,23 +21,24 @@ def load_tools():
 
 sia = load_tools()
 
-# --- 2. ADVANCED COOKIE SEARCH ---
-def find_cookies():
-    # List of every possible place the file could be
-    search_paths = [
-        "cookies.txt",
-        "News/comments/cookies.txt",
-        "comments/cookies.txt",
-        os.path.join(os.getcwd(), "cookies.txt"),
-        os.path.join(os.getcwd(), "News/comments/cookies.txt")
+# --- 2. THE SEARCH ENGINE ---
+def find_the_file(filename):
+    # This checks the current folder, the News folder, and the comments folder
+    search_locations = [
+        filename,
+        os.path.join("News", "comments", filename),
+        os.path.join("comments", filename),
+        os.path.abspath(filename)
     ]
-    for path in search_paths:
-        if os.path.exists(path):
-            return path
+    for loc in search_locations:
+        if os.path.exists(loc):
+            return loc
     return None
 
-# --- 3. THE SCRAPER ENGINE ---
+# --- 3. THE SCRAPER ---
 def scrape_video_data(url):
+    cookie_path = find_the_file("cookies.txt")
+    
     ydl_opts = {
         'getcomments': True,
         'skip_download': True,
@@ -51,50 +52,47 @@ def scrape_video_data(url):
         }
     }
     
-    path = find_cookies()
-    if path:
-        ydl_opts['cookiefile'] = path
-        st.sidebar.success(f"✅ Active: {path}")
-    else:
-        st.sidebar.error("❌ cookies.txt NOT found in any folder.")
-
+    if cookie_path:
+        ydl_opts['cookiefile'] = cookie_path
+    
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         comments = info.get('comments', [])
         return [{"Comment": c.get('text'), "Title": info.get('title', 'Video')} for c in comments if c.get('text')]
 
-# --- 4. DASHBOARD UI ---
+# --- 4. THE UI ---
 st.set_page_config(page_title="News Intel", layout="wide")
 st.title("📊 Social Intelligence Dashboard")
 
-# Debugger to help you see where the app is looking
-if st.sidebar.checkbox("Show System Folders"):
-    st.sidebar.write("Current Folder:", os.getcwd())
-    st.sidebar.write("Files here:", os.listdir("."))
+# Visual Debugger for you
+found_path = find_the_file("cookies.txt")
+if found_path:
+    st.sidebar.success(f"✅ Found cookies at: {found_path}")
+else:
+    st.sidebar.error("❌ cookies.txt NOT found. Please move it to the main folder.")
 
-urls_input = st.text_area("Paste URLs (TikTok/YouTube):", height=100)
+urls_input = st.text_area("Paste URLs:", height=100)
 
 if st.button("🚀 Analyze"):
-    urls = [u.strip() for u in urls_input.split('\n') if u.strip()]
-    if urls:
-        all_results = []
+    if not found_path:
+        st.error("I cannot start without the cookies.txt file.")
+    else:
+        results = []
+        urls = [u.strip() for u in urls_input.split('\n') if u.strip()]
         for url in urls:
             try:
                 data = scrape_video_data(url)
                 for item in data:
                     score = sia.polarity_scores(str(item['Comment']))['compound']
-                    label = "Positive" if score >= 0.05 else "Negative" if score <= -0.05 else "Neutral"
-                    all_results.append({
+                    results.append({
                         "Video": item['Title'], 
                         "Comment": item['Comment'], 
-                        "Sentiment": label
+                        "Sentiment": "Positive" if score >= 0.05 else "Negative" if score <= -0.05 else "Neutral"
                     })
             except Exception as e:
                 st.error(f"Error: {e}")
         
-        if all_results:
-            df = pd.DataFrame(all_results)
+        if results:
+            df = pd.DataFrame(results)
             st.bar_chart(df['Sentiment'].value_counts())
             st.dataframe(df, use_container_width=True)
-        else:
-            st.warning("No comments found. Try a different video or fresh cookies.")
