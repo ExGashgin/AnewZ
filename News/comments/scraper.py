@@ -13,9 +13,11 @@ else:
 # Download required data before doing anything else
 nltk.download('vader_lexicon')
 
+
 # Now you can safely start the UI
 st.title("My Scraper Dashboard")
 st.write("If you see this, the app is working!")
+st.write("Checking UI: The script has reached the end successfully!")
 
 import nltk
 nltk.download('vader_lexicon')
