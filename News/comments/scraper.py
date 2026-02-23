@@ -36,22 +36,13 @@ def scrape_video_data(url):
         }
     }
     
-    # UPDATED PATH: Looking specifically where your GitHub screenshot shows it
-    possible_paths = [
-        "News/comments/cookies.txt", 
-        "cookies.txt",
-        "/mount/src/anewz/News/comments/cookies.txt"
-    ]
-    
-    found_cookies = False
-    for path in possible_paths:
-        if os.path.exists(path):
-            ydl_opts['cookiefile'] = path
-            found_cookies = True
-            break
-            
-    if not found_cookies:
-        st.error("🚨 Could not find cookies.txt. Please check the file path.")
+    # Updated path to match your GitHub structure
+    cookie_path = "News/comments/cookies.txt"
+    if os.path.exists(cookie_path):
+        ydl_opts['cookiefile'] = cookie_path
+        st.sidebar.success(f"✅ Found cookies at: {cookie_path}")
+    else:
+        st.sidebar.error("🚨 cookies.txt NOT found in News/comments/")
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
@@ -72,10 +63,8 @@ if st.button("🚀 Analyze"):
             try:
                 data = scrape_video_data(url)
                 for item in data:
-                    # Simple Sentiment Analysis
                     score = sia.polarity_scores(str(item['Comment']))['compound']
                     label = "Positive" if score >= 0.05 else "Negative" if score <= -0.05 else "Neutral"
-                    
                     all_results.append({
                         "Video": item['Title'], 
                         "Comment": item['Comment'], 
@@ -87,7 +76,9 @@ if st.button("🚀 Analyze"):
         if all_results:
             df = pd.DataFrame(all_results)
             st.subheader("Sentiment Summary")
-            st.bar_chart(df['Sentiment'].value_counts())
+            # Bar chart fix
+            counts = df['Sentiment'].value_counts()
+            st.bar_chart(counts)
             st.dataframe(df, use_container_width=True)
         else:
-            st.warning("No comments retrieved. Ensure your cookies.txt is fresh!")
+            st.warning("No comments found. Try refreshing your cookies.txt file.")
