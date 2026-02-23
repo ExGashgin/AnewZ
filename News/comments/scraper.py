@@ -17,7 +17,6 @@ nltk.download('vader_lexicon')
 # Now you can safely start the UI
 st.title("My Scraper Dashboard")
 st.write("If you see this, the app is working!")
-st.write("Checking UI: The script has reached the end successfully!")
 
 import nltk
 nltk.download('vader_lexicon')
@@ -102,3 +101,7 @@ if url_list[0] != "PASTE_URL_1_HERE":
     print(df_final.head())
     df_final.to_csv("analyzed_comments.csv", index=False)
     print("✅ Analysis Complete! File saved as analyzed_comments.csv")
+
+
+
+st.write("Checking UI: The script has reached the end successfully!")
