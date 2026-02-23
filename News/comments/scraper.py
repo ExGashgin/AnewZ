@@ -4,9 +4,8 @@ import yt_dlp
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import nltk
 import ssl
-import time
 
-# 1. INITIALIZATION (The "Fixes")
+# --- INITIALIZATION ---
 try:
     _create_unverified_https_context = ssl._create_unverified_context
 except AttributeError:
@@ -17,13 +16,11 @@ else:
 nltk.download('vader_lexicon')
 sia = SentimentIntensityAnalyzer()
 
-# 2. YOUR GENRE BRAIN
+# --- GENRE BRAIN ---
 GENRE_MAP = {
-    "World": ["un", "nato", "global", "international", "world", "foreign"],
+    "Economy": ["oil", "gas", "price", "business", "market", "finance", "bank", "dollar"],
     "Politics": ["election", "president", "minister", "parliament", "government"],
-    "Economy": ["oil", "gas", "price", "business", "market", "finance", "bank"],
-    "Sports": ["football", "goal", "match", "league", "win", "player"],
-    "Technology": ["ai", "tech", "software", "google", "meta", "cyber"],
+    "World": ["un", "nato", "global", "international", "world", "foreign"],
     "Region": ["baku", "caucasus", "tbilisi", "karabakh"]
 }
 
@@ -38,24 +35,24 @@ def analyze_comment(text):
     label = "Positive" if score >= 0.05 else "Negative" if score <= -0.05 else "Neutral"
     return genre, score, label
 
-# 3. UI LAYOUT
+# --- UI LAYOUT ---
 st.set_page_config(page_title="Social Intelligence", layout="wide")
 st.title("📊 Social Media Comment Intelligence")
 
-urls_input = st.text_area("Paste Video URLs (TikTok/YouTube) - One per line:", height=150)
+urls_input = st.text_area("Paste Video URLs (One per line):", height=100)
 
 if st.button("🚀 Scrape & Analyze"):
     urls = [u.strip() for u in urls_input.split('\n') if u.strip()]
-    if not urls:
-        st.warning("Please enter at least one URL.")
-    else:
+    if urls:
         results = []
-        with st.spinner("Accessing social media... this may take a minute."):
+        with st.spinner("Accessing social media..."):
+            # yt-dlp options specifically for cloud servers
             ydl_opts = {
                 'getcomments': True,
                 'skip_download': True,
                 'quiet': True,
-                'extractor_args': {'youtube': {'max_comments': ['50']}, 'tiktok': {'max_comments': ['50']}} 
+                'extractor_args': {'youtube': {'max_comments': ['50']}, 'tiktok': {'max_comments': ['50']}},
+                'player_client': ['web_safari'] # Mimics real browser to avoid 403 blocks
             }
             
             for url in urls:
@@ -66,29 +63,13 @@ if st.button("🚀 Scrape & Analyze"):
                         for c in comments:
                             if c.get('text'):
                                 g, s, l = analyze_comment(c.get('text'))
-                                results.append({
-                                    "Video": info.get('title', 'Video'),
-                                    "Comment": c.get('text'),
-                                    "Genre": g,
-                                    "Sentiment": l,
-                                    "Score": s
-                                })
+                                results.append({"Comment": c.get('text'), "Genre": g, "Sentiment": l, "Score": s})
                 except Exception as e:
-                    st.error(f"Error scraping {url}: {e}")
+                    st.error(f"Error on {url}: {e}")
 
         if results:
             df = pd.DataFrame(results)
-            
-            # --- DASHBOARD VISUALS ---
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("Sentiment Breakdown")
-                st.bar_chart(df['Sentiment'].value_counts())
-            
-            with col2:
-                st.subheader("Genre Distribution")
-                st.table(df['Genre'].value_counts())
-
-            st.subheader("Detailed Analysis")
+            st.subheader("Sentiment vs Genre Breakdown")
+            chart_data = df.groupby(['Genre', 'Sentiment']).size().unstack().fillna(0)
+            st.bar_chart(chart_data)
             st.dataframe(df, use_container_width=True)
-            st.download_button("📥 Download Results", df.to_csv(index=False), "analysis.csv")
