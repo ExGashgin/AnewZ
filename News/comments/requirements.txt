@@ -1,16 +1,4 @@
-# Web Interface
 streamlit
-
-# Data Handling
 pandas
-numpy
-
-# Scraping & Connectivity
 yt-dlp
-curl_cffi
-
-# Natural Language Processing
 nltk
-
-# Environment & Utilities
-requests
