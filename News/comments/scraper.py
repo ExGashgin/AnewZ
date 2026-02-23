@@ -46,25 +46,21 @@ def scrape_video_data(url):
         'skip_download': True,
         'quiet': True,
         'extractor_args': {
-            'youtube': {
-                'max_comments': ['30'],
-                'player_client': ['web_embedded', 'web']
-            },
+            'youtube': {'max_comments': ['30'], 'player_client': ['web_embedded', 'web']},
             'tiktok': {'max_comments': ['30']}
         },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
         }
     }
     
-    # Check for cookies file to bypass 403 Forbidden errors
     if os.path.exists("cookies.txt"):
         ydl_opts['cookiefile'] = 'cookies.txt'
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         comments = info.get('comments', [])
+        # Ensure list comprehension is properly closed
         return [{"Comment": c.get('text'), "Video": info.get('title', 'Video')} for c in comments if c.get('text')]
 
 # --- 4. DASHBOARD ---
@@ -79,6 +75,24 @@ if st.button("🚀 Analyze"):
         all_data = []
         for url in urls:
             try:
-                # Add a small delay to avoid rate-limiting
-                time_delay = 1
-                data
+                data = scrape_video_data(url)
+                for item in data:
+                    g, s, l = analyze_comment(item['Comment'])
+                    all_data.append({
+                        "Video": item['Video'], 
+                        "Comment": item['Comment'], 
+                        "Genre": g, 
+                        "Sentiment": l, 
+                        "Score": s
+                    })
+            except Exception as e:
+                st.error(f"Error on {url}: {e}")
+        
+        if all_data:
+            df = pd.DataFrame(all_data)
+            # VERIFIED FIX: Bar chart syntax is now clean
+            st.subheader("Sentiment Distribution")
+            st.bar_chart(df['Sentiment'].value_counts())
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.warning("No comments retrieved. This often happens if the platform blocks the request.")
