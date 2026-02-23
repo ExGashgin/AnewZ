@@ -21,14 +21,29 @@ def load_tools():
 
 sia = load_tools()
 
-# --- 2. THE SCRAPER ENGINE ---
+# --- 2. ADVANCED COOKIE SEARCH ---
+def find_cookies():
+    # List of every possible place the file could be
+    search_paths = [
+        "cookies.txt",
+        "News/comments/cookies.txt",
+        "comments/cookies.txt",
+        os.path.join(os.getcwd(), "cookies.txt"),
+        os.path.join(os.getcwd(), "News/comments/cookies.txt")
+    ]
+    for path in search_paths:
+        if os.path.exists(path):
+            return path
+    return None
+
+# --- 3. THE SCRAPER ENGINE ---
 def scrape_video_data(url):
     ydl_opts = {
         'getcomments': True,
         'skip_download': True,
         'quiet': True,
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         },
         'extractor_args': {
             'youtube': {'max_comments': ['30'], 'player_client': ['web']},
@@ -36,22 +51,26 @@ def scrape_video_data(url):
         }
     }
     
-    # Updated path to match your GitHub structure
-    cookie_path = "News/comments/cookies.txt"
-    if os.path.exists(cookie_path):
-        ydl_opts['cookiefile'] = cookie_path
-        st.sidebar.success(f"✅ Found cookies at: {cookie_path}")
+    path = find_cookies()
+    if path:
+        ydl_opts['cookiefile'] = path
+        st.sidebar.success(f"✅ Active: {path}")
     else:
-        st.sidebar.error("🚨 cookies.txt NOT found in News/comments/")
+        st.sidebar.error("❌ cookies.txt NOT found in any folder.")
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         comments = info.get('comments', [])
         return [{"Comment": c.get('text'), "Title": info.get('title', 'Video')} for c in comments if c.get('text')]
 
-# --- 3. DASHBOARD UI ---
-st.set_page_config(page_title="News Intelligence", layout="wide")
+# --- 4. DASHBOARD UI ---
+st.set_page_config(page_title="News Intel", layout="wide")
 st.title("📊 Social Intelligence Dashboard")
+
+# Debugger to help you see where the app is looking
+if st.sidebar.checkbox("Show System Folders"):
+    st.sidebar.write("Current Folder:", os.getcwd())
+    st.sidebar.write("Files here:", os.listdir("."))
 
 urls_input = st.text_area("Paste URLs (TikTok/YouTube):", height=100)
 
@@ -71,14 +90,11 @@ if st.button("🚀 Analyze"):
                         "Sentiment": label
                     })
             except Exception as e:
-                st.error(f"Error on {url}: {e}")
+                st.error(f"Error: {e}")
         
         if all_results:
             df = pd.DataFrame(all_results)
-            st.subheader("Sentiment Summary")
-            # Bar chart fix
-            counts = df['Sentiment'].value_counts()
-            st.bar_chart(counts)
+            st.bar_chart(df['Sentiment'].value_counts())
             st.dataframe(df, use_container_width=True)
         else:
-            st.warning("No comments found. Try refreshing your cookies.txt file.")
+            st.warning("No comments found. Try a different video or fresh cookies.")
