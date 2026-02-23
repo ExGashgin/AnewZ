@@ -1,4 +1,4 @@
 streamlit
 pandas
-yt-dlp
+yt-dlp>=2025.2.21
 nltk
