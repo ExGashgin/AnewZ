@@ -53,10 +53,12 @@ def scrape_video_data(url):
             'tiktok': {'max_comments': ['30']}
         },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         }
     }
     
+    # Check for cookies file to bypass 403 Forbidden errors
     if os.path.exists("cookies.txt"):
         ydl_opts['cookiefile'] = 'cookies.txt'
 
@@ -77,17 +79,6 @@ if st.button("🚀 Analyze"):
         all_data = []
         for url in urls:
             try:
-                data = scrape_video_data(url)
-                for item in data:
-                    g, s, l = analyze_comment(item['Comment'])
-                    all_data.append({
-                        "Video": item['Video'], 
-                        "Comment": item['Comment'], 
-                        "Genre": g, 
-                        "Sentiment": l, 
-                        "Score": s
-                    })
-            except Exception as e:
-                st.error(f"Error on {url}: {e}")
-        
-        if all_data
+                # Add a small delay to avoid rate-limiting
+                time_delay = 1
+                data
