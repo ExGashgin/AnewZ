@@ -45,7 +45,6 @@ def scrape_video_data(url):
         'getcomments': True,
         'skip_download': True,
         'quiet': True,
-        # FORCE player to use web_embedded to bypass some blocks
         'extractor_args': {
             'youtube': {
                 'max_comments': ['30'],
@@ -58,14 +57,13 @@ def scrape_video_data(url):
         }
     }
     
-    # Check if user uploaded a cookies file to GitHub
     if os.path.exists("cookies.txt"):
         ydl_opts['cookiefile'] = 'cookies.txt'
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         comments = info.get('comments', [])
-        return [{"Comment": c.get('text'), "Video": info.get('title')} for c in comments if c.get('text')]
+        return [{"Comment": c.get('text'), "Video": info.get('title', 'Video')} for c in comments if c.get('text')]
 
 # --- 4. DASHBOARD ---
 st.set_page_config(page_title="News Intel", layout="wide")
@@ -82,10 +80,14 @@ if st.button("🚀 Analyze"):
                 data = scrape_video_data(url)
                 for item in data:
                     g, s, l = analyze_comment(item['Comment'])
-                    all_data.append({"Video": item['Video'], "Comment": item['Comment'], "Genre": g, "Sentiment": l, "Score": s})
+                    all_data.append({
+                        "Video": item['Video'], 
+                        "Comment": item['Comment'], 
+                        "Genre": g, 
+                        "Sentiment": l, 
+                        "Score": s
+                    })
             except Exception as e:
                 st.error(f"Error on {url}: {e}")
         
-        if all_data:
-            df = pd.DataFrame(all_data)
-            st.bar_chart(
+        if all_data
