@@ -105,3 +105,10 @@ if url_list[0] != "PASTE_URL_1_HERE":
 
 
 st.write("Checking UI: The script has reached the end successfully!")
+
+import streamlit as st
+st.write("--- UI START CHECK ---")
+
+# ... your scraping code ...
+
+st.write("--- UI END CHECK ---")
