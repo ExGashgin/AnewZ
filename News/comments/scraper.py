@@ -1,3 +1,22 @@
+import streamlit as st
+import nltk
+import ssl
+
+# This MUST be at the very top to prevent the LookupError/Blank Screen
+try:
+    _create_unverified_https_context = ssl._create_unverified_context
+except AttributeError:
+    pass
+else:
+    ssl._create_default_https_context = _create_unverified_https_context
+
+# Download required data before doing anything else
+nltk.download('vader_lexicon')
+
+# Now you can safely start the UI
+st.title("My Scraper Dashboard")
+st.write("If you see this, the app is working!")
+
 import nltk
 nltk.download('vader_lexicon')
 import yt_dlp
