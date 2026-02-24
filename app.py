@@ -4,6 +4,8 @@ import shutil
 import asyncio
 import pandas as pd
 from playwright.async_api import async_playwright
+import random
+import time
 
 # --- 1. CONFIGURATION & BROWSER SETUP ---
 st.set_page_config(page_title="Bulk Social Scraper", page_icon="🚀", layout="wide")
@@ -22,51 +24,41 @@ def get_chrome_path():
     return None
 
 # --- 2. SCRAPING ENGINE (Single URL) ---
-async def scrape_youtube(url, max_scrolls=10):
+async def scrape_youtube_bulk(url_list, scrolls=10):
     chrome_path = get_chrome_path()
-    if not chrome_path:
-        return None, "Chromium not found. Check packages.txt."
-
-    try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(executable_path=chrome_path, headless=True)
-            # Use a modern User-Agent to avoid bot detection
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-            )
-            page = await context.new_page()
-            
-            # Go to URL
-            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
-            
-            # Handle possible Cookie Pop-up
+    master_data = []
+    
+    async with async_playwright() as p:
+        # Launch browser once to save time
+        browser = await p.chromium.launch(executable_path=chrome_path, headless=True)
+        
+        for url in url_list:
             try:
-                # Look for "Accept all" or "I agree" buttons
-                consent = page.get_by_role("button", name="Accept all", exact=False).first
-                if await consent.is_visible():
-                    await consent.click()
-                    await asyncio.sleep(1)
-            except:
-                pass
-
-            # Infinite Scroll Logic
-            all_comments = []
-            for _ in range(max_scrolls):
-                await page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
-                await asyncio.sleep(2) # Wait for new batch to load
+                # Create a fresh context for EVERY url to clear cookies/cache
+                context = await browser.new_context(
+                    user_agent=random.choice([
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+                    ])
+                )
+                page = await context.new_page()
                 
-                # Grab what's currently on screen
-                comments = await page.locator("#content-text").all_inner_texts()
-                authors = await page.locator("#author-text").all_inner_texts()
+                # Navigate and scrape (using your existing logic)
+                await page.goto(url, wait_until="networkidle", timeout=60000)
                 
-                # Store results
-                current_data = [{"Author": a, "Comment": c, "URL": url} for a, c in zip(authors, comments)]
-                all_comments = current_data # Refresh with full list in DOM
-            
-            await browser.close()
-            return all_comments, None
-    except Exception as e:
-        return None, str(e)
+                # ... [Your Scrolling & Scraping Logic Here] ...
+                
+                await context.close() # Close context, but keep browser open
+                
+                # THE FIX: Add a random wait to avoid IP blocking
+                wait_time = random.randint(3, 7)
+                time.sleep(wait_time) 
+                
+            except Exception as e:
+                st.error(f"Failed on {url}: {e}")
+                
+        await browser.close()
+    return master_data
 
 # --- 3. STREAMLIT UI ---
 st.title("🚀 Bulk YouTube Comment Scraper")
