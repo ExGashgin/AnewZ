@@ -6,18 +6,60 @@ from playwright.async_api import async_playwright
 import pandas as pd
 
 @st.cache_resource
-def install_playwright():
-    """Install Playwright browsers and system dependencies."""
-    try:
-        # 1. Install the Chromium browser
-        subprocess.run(["python", "-m", "playwright", "install", "chromium"], check=True)
-        # 2. Install Linux system dependencies (crucial for Streamlit Cloud)
-        subprocess.run(["python", "-m", "playwright", "install-deps", "chromium"], check=True)
-    except Exception as e:
-        st.error(f"Installation failed: {e}")
+# 1. Define a writable path for the browser
+# Streamlit's /tmp directory is usually writable
+os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/tmp/playwright-browsers"
 
-# Run the installer once per session
-install_playwright()
+@st.cache_resource
+def install_playwright_locally():
+    try:
+        # Install only Chromium to keep it lightweight
+        subprocess.run(["python", "-m", "playwright", "install", "chromium"], check=True)
+        # Note: We skip 'install-deps' here because Streamlit installs 
+        # those via your packages.txt file automatically.
+    except subprocess.CalledProcessError as e:
+        st.error(f"Playwright installation failed. Error: {e}")
+
+# Run the installer
+install_playwright_locally()
+
+
+2. Update your packages.txt (Root Folder)
+Streamlit Cloud uses a Debian-based Linux. It needs these specific libraries to run a "headless" browser. Make sure your packages.txt has these exact names:
+
+Plaintext
+libnss3
+libatk-bridge2.0-0
+libgtk-3-0
+libgbm1
+libasound2
+libxshmfence1
+libglu1-mesa
+3. Update the Scraper Launch
+Because you moved the browser to /tmp/, you need to ensure Playwright knows where to look when you launch the browser:
+
+Python
+from playwright.async_api import async_playwright
+
+async def run_scraper(url):
+    async with async_playwright() as p:
+        # Playwright will automatically look in the PLAYWRIGHT_BROWSERS_PATH 
+        # environment variable we set at the top of the script.
+        browser = await p.chromium.launch(headless=True)
+        # ... rest of your code
+Why this fixes the "Exit Status 1"
+Permissions: By default, Playwright tries to install to ~/.cache/ms-playwright. On some Streamlit server instances, this path is restricted. Moving it to /tmp/ usually solves the permission block.
+
+Dependencies: The error often stems from missing Linux "dependencies" (like libnss3). By adding them to packages.txt, Streamlit installs them before your Python code even runs, ensuring playwright install finds a healthy environment.
+
+Would you like me to check your requirements.txt as well to make sure there are no version conflicts between Playwright and Streamlit?
+
+Playwright Python Installation Guide
+
+This video provides a foundational walkthrough of the Playwright installation process for Python, which is helpful for understanding the underlying commands your script is executing.
+
+Playwright Python Installation | Step-by-Step Guide for Beginners - YouTube
+Suresh SDET Automation · 311 views
 
 # --- MUST BE AT THE TOP OF YOUR SCRIPT ---
 def install_playwright_browsers():
