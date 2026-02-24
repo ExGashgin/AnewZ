@@ -1,3 +1,27 @@
+import os
+import subprocess
+import streamlit as st
+
+# --- MUST BE AT THE TOP OF YOUR SCRIPT ---
+def install_playwright_browsers():
+    try:
+        # Try to launch playwright to see if browsers are there
+        from playwright.async_api import async_playwright
+    except ImportError:
+        # Install the playwright python package if somehow missing
+        subprocess.run(["pip", "install", "playwright"])
+    
+    # Run the browser installation
+    # We only install chromium to save time and space on the server
+    subprocess.run(["python", "-m", "playwright", "install", "chromium"])
+    subprocess.run(["python", "-m", "playwright", "install-deps"])
+
+# Run the installer
+if 'browsers_installed' not in st.session_state:
+    with st.spinner("Setting up browser engines... this only happens once."):
+        install_playwright_browsers()
+        st.session_state['browsers_installed'] = True
+
 import streamlit as st
 import asyncio
 from playwright.async_api import async_playwright
