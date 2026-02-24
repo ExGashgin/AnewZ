@@ -2,43 +2,69 @@ import streamlit as st
 import pandas as pd
 import yt_dlp
 import time
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
+# Initialize the analyzer
+analyzer = SentimentIntensityAnalyzer()
+
+def get_sentiment(text):
+    """Categorizes text into Good, Bad, or Neutral using VADER."""
+    if not text:
+        return "Neutral"
+    
+    # Calculate sentiment scores
+    score = analyzer.polarity_scores(text)
+    compound = score['compound']
+    
+    if compound >= 0.05:
+        return "Good 😊"
+    elif compound <= -0.05:
+        return "Bad 😡"
+    else:
+        return "Neutral 😐"
 
 def get_comments_bulk(url):
-    """Uses yt-dlp to grab comments without needing a browser."""
-    ydl_opts = {
-        'getcomments': True,
-        'skip_download': True,
-        'quiet': True,
-        'no_warnings': True,
-        'extract_flat': True,
-    }
+    ydl_opts = {'getcomments': True, 'skip_download': True, 'quiet': True}
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             comments = info.get('comments', [])
-            return [{"Author": c.get('author'), "Text": c.get('text'), "URL": url} for c in comments]
-    except Exception as e:
+            
+            results = []
+            for c in comments:
+                comment_text = c.get('text')
+                results.append({
+                    "Author": c.get('author'),
+                    "Text": comment_text,
+                    "Category": get_sentiment(comment_text), # New Column
+                    "URL": url
+                })
+            return results
+    except Exception:
         return None
 
-st.title("🚀 Bulk URL Scraper")
-urls_input = st.text_area("Paste URLs (one per line):")
+# --- UI SECTION ---
+st.title("📊 Bulk Scraper with Sentiment Analysis")
 
-if st.button("Scrape All"):
+urls_input = st.text_area("Paste YouTube URLs:")
+
+if st.button("Scrape & Categorize"):
     urls = [u.strip() for u in urls_input.split('\n') if u.strip()]
     all_data = []
     
-    progress_bar = st.progress(0)
-    for i, url in enumerate(urls):
-        st.write(f"Scraping: {url}")
+    for url in urls:
+        st.write(f"Processing: {url}")
         data = get_comments_bulk(url)
         if data:
             all_data.extend(data)
-        progress_bar.progress((i + 1) / len(urls))
-        # Wait 1 second between URLs to avoid being blocked
-        time.sleep(1)
-
+            
     if all_data:
         df = pd.DataFrame(all_data)
-        st.success(f"Finished! Total comments: {len(df)}")
+        
+        # Display a summary table
+        st.subheader("Sentiment Summary")
+        summary = df['Category'].value_counts()
+        st.bar_chart(summary)
+        
         st.dataframe(df)
-        st.download_button("Download CSV", df.to_csv(index=False), "bulk_data.csv")
+        st.download_button("Download CSV", df.to_csv(index=False), "categorized_comments.csv")
