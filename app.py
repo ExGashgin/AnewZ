@@ -22,47 +22,47 @@ def get_chrome_path():
     return None
 
 # --- 2. SCRAPING ENGINE ---
-async def scrape_youtube(url, max_comments=300):
+async def scrape_youtube(url, target_count=300):
     chrome_path = get_chrome_path()
     async with async_playwright() as p:
         browser = await p.chromium.launch(executable_path=chrome_path, headless=True)
         page = await browser.new_page()
+        
         await page.goto(url, wait_until="networkidle")
-
-        # Scroll to comments section initially
-        await page.mouse.wheel(0, 1000)
+        
+        # 1. Initial scroll to find the comment section
+        await page.evaluate("window.scrollTo(0, 800)")
         await asyncio.sleep(2)
-
-        prev_height = 0
-        reached_end = False
+        
         all_comments = []
-
-        while len(all_comments) < max_comments:
-            # Scroll to the current bottom of the page
-            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            await asyncio.sleep(2) # Wait for new comments to "pop in"
-
-            # Check if the page height has changed
-            new_height = await page.evaluate("document.body.scrollHeight")
-            if new_height == prev_height:
-                # If height didn't change, we might be at the very bottom
-                break
-            prev_height = new_height
-
-            # Extract currently visible comments
+        last_height = await page.evaluate("document.documentElement.scrollHeight")
+        
+        while len(all_comments) < target_count:
+            # 2. Scroll to the current bottom
+            await page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
+            
+            # 3. Wait for the new batch of comments to load
+            await asyncio.sleep(2) 
+            
+            # 4. Extract what is currently on screen
+            # We use a set or dict here to ensure we don't save the same comment twice
             comments = await page.locator("#content-text").all_inner_texts()
             authors = await page.locator("#author-text").all_inner_texts()
             
-            # Update our list (using a dict to avoid duplicates)
             current_batch = [{"Author": a, "Comment": c} for a, c in zip(authors, comments)]
-            all_comments = current_batch # Locator grabs everything currently in the DOM
+            all_comments = current_batch # Locator always returns the full list in the DOM
             
-            # Stop if we hit the limit
-            if len(all_comments) >= max_comments:
+            # 5. Check if we've actually reached the very bottom
+            new_height = await page.evaluate("document.documentElement.scrollHeight")
+            if new_height == last_height:
                 break
-                
+            last_height = new_height
+            
+            if len(all_comments) >= target_count:
+                break
+
         await browser.close()
-        return all_comments[:max_comments], None
+        return all_comments[:target_count], None
 
 # --- 3. USER INTERFACE ---
 st.title("🚀 Social Media Scraper")
