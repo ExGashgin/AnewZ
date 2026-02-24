@@ -24,31 +24,33 @@ def get_chrome_path():
 # --- 2. SCRAPING ENGINE ---
 async def scrape_youtube(url):
     chrome_path = get_chrome_path()
-    if not chrome_path:
-        return None, "Chromium not found. Please check packages.txt and Reboot App."
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(executable_path=chrome_path, headless=True)
+        # Use a mobile-like user agent to get a lighter, faster-loading page
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1"
+        )
+        page = await context.new_page()
+        
+        await page.goto(url, wait_until="networkidle", timeout=60000)
+        
+        # 1. Scroll down gradually to trigger the comment section
+        for _ in range(3):
+            await page.mouse.wheel(0, 800)
+            await asyncio.sleep(1)
+        
+        # 2. Wait for the specific comment container to appear
+        try:
+            # YouTube comments are inside a ytd-item-section-renderer
+            await page.wait_for_selector("#content-text", timeout=15000)
+        except:
+            return None, "Timed out waiting for comments. Try a different video URL."
 
-    try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(executable_path=chrome_path, headless=True)
-            page = await browser.new_page()
-            
-            # Navigate
-            await page.goto(url, wait_until="networkidle", timeout=30000)
-            
-            # YouTube: Scroll to load comments
-            await page.evaluate("window.scrollTo(0, 1000)")
-            await asyncio.sleep(3)
-            
-            # Grab comments
-            comments = await page.locator("#content-text").all_inner_texts()
-            await browser.close()
-            
-            if not comments:
-                return None, "No comments found. Is this a private video?"
-                
-            return [{"Comment": text} for text in comments], None
-    except Exception as e:
-        return None, str(e)
+        # 3. Pull all comments currently loaded
+        comment_elements = await page.locator("#content-text").all_inner_texts()
+        
+        await browser.close()
+        return [{"Comment": c} for c in comment_elements], None
 
 # --- 3. USER INTERFACE ---
 st.title("🚀 Social Media Scraper")
