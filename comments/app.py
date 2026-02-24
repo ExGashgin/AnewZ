@@ -4,6 +4,36 @@ from playwright.async_api import async_playwright
 import pandas as pd
 import shutil
 
+
+# Check where Chromium is
+def check_environment():
+    paths = ["/usr/bin/chromium", "/usr/bin/chromium-browser", shutil.which("chromium")]
+    found = [p for p in paths if p and os.path.exists(p)]
+    return found[0] if found else None
+
+chrome_path = check_environment()
+
+if not chrome_path:
+    st.error("❌ Chromium is STILL missing.")
+    st.info("Check your deployment logs (bottom right of the Streamlit screen). Look for any errors during the 'Apt dependencies' stage.")
+else:
+    st.success(f"✅ Chromium found at: {chrome_path}")
+    
+    # Simple test run
+    if st.button("Run Test Scrape"):
+        async def test():
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(executable_path=chrome_path, headless=True)
+                page = await browser.new_page()
+                await page.goto("https://www.google.com")
+                title = await page.title()
+                await browser.close()
+                return title
+        
+        res = asyncio.run(test())
+        st.write(f"Browser successfully opened! Page title: {res}")
+
+
 # This function finds where Streamlit installed Chromium
 def get_chromium_path():
     return shutil.which("chromium") or shutil.which("chromium-browser")
