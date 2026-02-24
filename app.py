@@ -17,9 +17,9 @@ def get_sentiment(text):
     compound = score['compound']
     
     if compound >= 0.05:
-        return "Good 😊"
+        return "Positive 😊"
     elif compound <= -0.05:
-        return "Bad 😡"
+        return "Negative 😡"
     else:
         return "Neutral 😐"
 
