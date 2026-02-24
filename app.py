@@ -26,31 +26,53 @@ async def scrape_youtube(url):
     chrome_path = get_chrome_path()
     async with async_playwright() as p:
         browser = await p.chromium.launch(executable_path=chrome_path, headless=True)
-        # Use a mobile-like user agent to get a lighter, faster-loading page
+        # Using a desktop User-Agent to ensure we get the standard layout
         context = await browser.new_context(
-            user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = await context.new_page()
         
-        await page.goto(url, wait_until="networkidle", timeout=60000)
-        
-        # 1. Scroll down gradually to trigger the comment section
-        for _ in range(3):
-            await page.mouse.wheel(0, 800)
-            await asyncio.sleep(1)
-        
-        # 2. Wait for the specific comment container to appear
         try:
-            # YouTube comments are inside a ytd-item-section-renderer
-            await page.wait_for_selector("#content-text", timeout=15000)
-        except:
-            return None, "Timed out waiting for comments. Try a different video URL."
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            
+            # --- POP-UP KILLER ---
+            # Wait a moment for any consent dialogs to appear
+            await asyncio.sleep(2)
+            # This looks for 'Accept all', 'I agree', or 'Reject all' buttons
+            consent_buttons = ["Accept all", "I agree", "Allow all", "Reject all"]
+            for text in consent_buttons:
+                button = page.get_by_role("button", name=text, exact=False).first
+                if await button.is_visible():
+                    await button.click()
+                    await asyncio.sleep(1) # Wait for pop-up to disappear
+                    break
 
-        # 3. Pull all comments currently loaded
-        comment_elements = await page.locator("#content-text").all_inner_texts()
-        
-        await browser.close()
-        return [{"Comment": c} for c in comment_elements], None
+            # --- TRIGGER COMMENTS ---
+            # YouTube won't load comments until you scroll down
+            await page.evaluate("window.scrollTo(0, 800)")
+            await asyncio.sleep(2)
+            
+            # Wait for the comment section to load (ID is usually #comments)
+            await page.wait_for_selector("#content-text", timeout=15000)
+            
+            # Pull the data
+            comment_elements = await page.locator("#content-text").all_inner_texts()
+            authors = await page.locator("#author-text").all_inner_texts()
+            
+            await browser.close()
+            
+            results = [{"Author": a.strip(), "Comment": c.strip()} for a, c in zip(authors, comment_elements)]
+            return results, None
+
+        except Exception as e:
+            # Take a screenshot if it fails so we can see what the bot sees
+            await page.screenshot(path="error_screen.png")
+            await browser.close()
+            return None, f"Scrape failed. Bot was stuck at a screen. Details: {str(e)}"
+
+# In your UI section, add this so you can see the error screenshot
+if 'error_screen.png' in os.listdir():
+    st.image("error_screen.png", caption="What the bot saw when it failed")
 
 # --- 3. USER INTERFACE ---
 st.title("🚀 Social Media Scraper")
