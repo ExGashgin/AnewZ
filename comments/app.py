@@ -59,7 +59,7 @@ Playwright Python Installation Guide
 This video provides a foundational walkthrough of the Playwright installation process for Python, which is helpful for understanding the underlying commands your script is executing.
 
 Playwright Python Installation | Step-by-Step Guide for Beginners - YouTube
-Suresh SDET Automation · 311 views
+Suresh SDET Automation 311 views
 
 # --- MUST BE AT THE TOP OF YOUR SCRIPT ---
 def install_playwright_browsers():
