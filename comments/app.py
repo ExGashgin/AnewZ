@@ -1,6 +1,23 @@
 import os
 import subprocess
 import streamlit as st
+import asyncio
+from playwright.async_api import async_playwright
+import pandas as pd
+
+@st.cache_resource
+def install_playwright():
+    """Install Playwright browsers and system dependencies."""
+    try:
+        # 1. Install the Chromium browser
+        subprocess.run(["python", "-m", "playwright", "install", "chromium"], check=True)
+        # 2. Install Linux system dependencies (crucial for Streamlit Cloud)
+        subprocess.run(["python", "-m", "playwright", "install-deps", "chromium"], check=True)
+    except Exception as e:
+        st.error(f"Installation failed: {e}")
+
+# Run the installer once per session
+install_playwright()
 
 # --- MUST BE AT THE TOP OF YOUR SCRIPT ---
 def install_playwright_browsers():
@@ -22,10 +39,6 @@ if 'browsers_installed' not in st.session_state:
         install_playwright_browsers()
         st.session_state['browsers_installed'] = True
 
-import streamlit as st
-import asyncio
-from playwright.async_api import async_playwright
-import pandas as pd
 
 # Function to scrape YouTube (The easiest one)
 async def scrape_youtube(url):
