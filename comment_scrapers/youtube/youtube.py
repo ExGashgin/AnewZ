@@ -17,11 +17,11 @@ def get_sentiment(text):
     compound = score['compound']
     
     if compound >= 0.05:
-        return "Positive 😊"
+        return "Positive"
     elif compound <= -0.05:
-        return "Negative 😡"
+        return "Negative"
     else:
-        return "Neutral 😐"
+        return "Neutral"
 
 def get_comments_bulk(url):
     ydl_opts = {'getcomments': True, 'skip_download': True, 'quiet': True}
