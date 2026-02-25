@@ -26,14 +26,22 @@ def get_yt_comments(url):
     except: return None
 
 def get_fb_comments(post_id, token):
+    # Meta Graph API Endpoint
     url = f"https://graph.facebook.com/v22.0/{post_id}/comments"
-    params = {'access_token': token, 'limit': 100, 'fields': 'from,message'}
-    try:
-        r = requests.get(url, params=params).json()
-        return [{"Author": c.get('from', {}).get('name'), "Text": c.get('message'),
-                 "Category": get_sentiment(c.get('message')), "URL": post_id} 
-                for c in r.get('data', [])]
-    except: return None
+    params = {'access_token': token, 'fields': 'message,from'}
+    
+    response = requests.get(url, params=params)
+    data = response.json()
+    
+    if "error" in data:
+        # This will show you exactly what's wrong (e.g., Error 100 or 200)
+        st.error(f"⚠️ Meta Error: {data['error'].get('message')}")
+        st.write(f"Error Type: {data['error'].get('type')}")
+        return None
+        
+    return [{"Author": c.get('from', {}).get('name'), "Text": c.get('message'),
+             "Category": get_sentiment(c.get('message')), "URL": post_id} 
+            for c in data.get('data', [])]
 
 # 3. Streamlit UI
 st.set_page_config(page_title="Social Scraper", layout="wide")
