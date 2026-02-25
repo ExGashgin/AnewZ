@@ -1,6 +1,4 @@
 streamlit
 pandas
-yt-dlp
 vaderSentiment
-apify-client
-instaloader
+apify-client  # The industry standard for Meta in 2026
