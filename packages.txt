@@ -1,4 +1,0 @@
-chromium
-libnss3
-libgbm1
-libasound2
