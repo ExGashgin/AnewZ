@@ -43,36 +43,62 @@ def get_fb_comments(post_id, token):
              "Category": get_sentiment(c.get('message')), "URL": post_id} 
             for c in data.get('data', [])]
 
-# 3. Streamlit UI
+# --- UI SECTION ---
 st.set_page_config(page_title="Social Scraper", layout="wide")
-st.title("📊 Multi-Platform Sentiment Analysis")
+st.title("📊 Bulk Sentiment Scraper (File Upload)")
 
 platform = st.sidebar.selectbox("Select Platform", ["YouTube", "Facebook"])
 
-if platform == "YouTube":
-    urls = st.text_area("Enter YouTube URLs (one per line):")
-    if st.button("Analyze YouTube"):
-        all_data = []
-        for url in urls.split('\n'):
-            if url.strip():
-                data = get_yt_comments(url.strip())
-                if data: all_data.extend(data)
-        if all_data:
-            df = pd.DataFrame(all_data)
-            st.write(f"Analyzed {len(df)} comments")
-            st.bar_chart(df['Category'].value_counts())
-            st.dataframe(df)
+# File Uploader in the sidebar or main page
+uploaded_file = st.sidebar.file_uploader("Upload CSV/Excel list", type=["csv", "xlsx"])
 
-else:
-    token = st.sidebar.text_input("Enter Page Access Token", type="password")
-    pids = st.text_area("Enter Facebook Post IDs (PageID_PostID):")
-    if st.button("Analyze Facebook"):
-        all_data = []
-        for pid in pids.split('\n'):
-            if pid.strip():
-                data = get_fb_comments(pid.strip(), token)
+if platform == "YouTube":
+    # Fallback to text area if no file is uploaded
+    urls_input = st.text_area("OR Paste YouTube URLs (one per line):")
+    
+    if st.button("Analyze YouTube"):
+        urls = []
+        if uploaded_file:
+            # Read from uploaded file (assumes URLs are in the first column)
+            df_input = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+            urls = df_input.iloc[:, 0].dropna().tolist()
+        else:
+            urls = [u.strip() for u in urls_input.split('\n') if u.strip()]
+
+        if urls:
+            all_data = []
+            progress_bar = st.progress(0)
+            for i, url in enumerate(urls):
+                data = get_yt_comments(url)
                 if data: all_data.extend(data)
-        if all_data:
-            df = pd.DataFrame(all_data)
-            st.bar_chart(df['Category'].value_counts())
-            st.dataframe(df)
+                progress_bar.progress((i + 1) / len(urls))
+            
+            if all_data:
+                df = pd.DataFrame(all_data)
+                st.bar_chart(df['Category'].value_counts())
+                st.dataframe(df)
+                st.download_button("Download Results", df.to_csv(index=False), "yt_results.csv")
+
+else: # Facebook
+    token = st.sidebar.text_input("Enter Page Access Token", type="password")
+    pids_input = st.text_area("OR Enter FB Post IDs (one per line):")
+    
+    if st.button("Analyze Facebook"):
+        pids = []
+        if uploaded_file:
+            df_input = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+            pids = df_input.iloc[:, 0].dropna().tolist()
+        else:
+            pids = [p.strip() for p in pids_input.split('\n') if p.strip()]
+
+        if pids:
+            all_data = []
+            for pid in pids:
+                data = get_fb_comments(pid, token)
+                if data: all_data.extend(data)
+            
+            if all_data:
+                df = pd.DataFrame(all_data)
+                st.bar_chart(df['Category'].value_counts())
+                st.dataframe(df)
+                st.download_button("Download Results", df.to_csv(index=False), "fb_results.csv")
