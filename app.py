@@ -134,13 +134,3 @@ if st.button(f"Analyze {platform}"):
             )
         else:
             st.error("No data found. Check your IDs/URLs or API permissions.")
-
----
-### Quick Implementation Checklist
-1.  **Dependencies**: Ensure you have `pip install streamlit pandas yt-dlp requests vaderSentiment` installed.
-2.  **Instagram Media IDs**: The API requires the **numeric Media ID** (e.g., `17841401234567890`), not the browser URL. You can find these via the Meta Graph Explorer.
-3.  **Permissions**: For Instagram, your token needs `instagram_basic` and `instagram_manage_comments`.
-
-
-
-**Would you like me to add a chart that breaks down sentiment per specific Post/URL?**
