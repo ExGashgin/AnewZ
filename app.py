@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
 import yt_dlp
-import requests
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+import time
 
-# --- 1. SETUP & SENTIMENT LOGIC ---
+# --- 1. SETUP ---
 analyzer = SentimentIntensityAnalyzer()
 
 def get_sentiment(text):
@@ -14,117 +14,96 @@ def get_sentiment(text):
     elif score <= -0.05: return "Negative"
     return "Neutral"
 
-# --- 2. SCRAPER FUNCTIONS ---
+# --- 2. TIKTOK SCRAPER FUNCTION ---
+def get_tiktok_comments(url):
+    # Ensure it's a valid URL and not a headline
+    if not str(url).strip().startswith("http"):
+        st.error(f"❌ '{url[:50]}...' is not a valid URL. Please paste a link.")
+        return None
 
-def get_yt_dlp_comments(url, platform_label):
-    """Handles both YouTube and TikTok via yt-dlp"""
     ydl_opts = {
         'getcomments': True, 
         'skip_download': True, 
         'quiet': True,
         'extract_flat': True,
-        'check_formats': False
+        'check_formats': False,
+        # Adding a common user-agent helps bypass basic bot detection
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
+    
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             comments = info.get('comments', [])
+            
             if not comments:
-                return None
+                return "Empty" # Distinguish between error and just no comments
+                
             return [{
-                "Author": c.get('author') or c.get('author_id'), 
+                "Author": c.get('author') or "Anonymous", 
                 "Text": c.get('text'), 
                 "Category": get_sentiment(c.get('text')), 
-                "Source_URL": url
+                "Video_URL": url
             } for c in comments]
     except Exception as e:
-        st.warning(f"Could not fetch {platform_label} comments for {url}: {e}")
-        return None
-
-def get_meta_comments(item_id, token, platform_label="Meta"):
-    """Handles both Facebook Post IDs and Instagram Media IDs via Graph API"""
-    url = f"https://graph.facebook.com/v22.0/{item_id}/comments"
-    fields = "text,username" if platform_label == "Instagram" else "message,from"
-    params = {'access_token': token, 'fields': fields}
-    
-    try:
-        response = requests.get(url, params=params)
-        data = response.json()
-        if "error" in data:
-            st.error(f"⚠️ {platform_label} Error ({item_id}): {data['error'].get('message')}")
-            return None
-            
-        results = []
-        for c in data.get('data', []):
-            text = c.get('text') if platform_label == "Instagram" else c.get('message')
-            author = c.get('username') if platform_label == "Instagram" else c.get('from', {}).get('name')
-            results.append({
-                "Author": author,
-                "Text": text,
-                "Category": get_sentiment(text),
-                "Source_ID": item_id
-            })
-        return results
-    except Exception as e:
-        st.error(f"Connection Error: {e}")
+        # This catches regional blocks or private video settings
+        st.warning(f"⚠️ TikTok blocked access to: {url}")
         return None
 
 # --- 3. UI SECTION ---
-st.set_page_config(page_title="Social Sentiment Scraper", layout="wide")
-st.title("📊 Multi-Platform Sentiment Scraper")
-st.markdown("Analyze comments from **YouTube**, **TikTok**, **Facebook**, or **Instagram**.")
+st.set_page_config(page_title="TikTok Sentiment Analyzer", layout="wide")
+st.title("🎵 TikTok Comment Scraper & Sentiment")
 
-# Sidebar Configuration
-st.sidebar.header("Settings")
-platform = st.sidebar.selectbox("Select Platform", ["YouTube", "TikTok", "Facebook", "Instagram"])
-uploaded_file = st.sidebar.file_uploader("Upload CSV/Excel list", type=["csv", "xlsx"])
+st.sidebar.header("Data Input")
+uploaded_file = st.sidebar.file_uploader("Upload CSV/Excel of TikTok URLs", type=["csv", "xlsx"])
+urls_input = st.text_area("OR Paste TikTok URLs (one per line):", placeholder="https://www.tiktok.com/@user/video/...")
 
-# Platform-specific token inputs
-token = ""
-if platform in ["Facebook", "Instagram"]:
-    token = st.sidebar.text_input(f"Enter {platform} Access Token", type="password")
+if st.button("Start Scraping TikTok"):
+    urls = []
+    # Determine source of URLs
+    if uploaded_file:
+        df_input = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+        urls = df_input.iloc[:, 0].dropna().tolist()
+    else:
+        urls = [u.strip() for u in urls_input.split('\n') if u.strip()]
 
-# --- 4. EXECUTION LOGIC ---
-
-input_list = []
-if uploaded_file:
-    df_input = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
-    input_list = df_input.iloc[:, 0].dropna().tolist()
-else:
-    label = f"{platform} URLs" if platform in ["YouTube", "TikTok"] else f"{platform} Object IDs"
-    text_input = st.text_area(f"Paste {label} (one per line):")
-    input_list = [i.strip() for i in text_input.split('\n') if i.strip()]
-
-if st.button(f"Analyze {platform}"):
-    if not input_list:
-        st.warning("Please provide IDs or upload a file.")
-    elif platform in ["Facebook", "Instagram"] and not token:
-        st.error("Access Token is required for Meta platforms.")
+    if not urls:
+        st.warning("Please provide at least one TikTok URL.")
     else:
         all_data = []
         progress_bar = st.progress(0)
-        
-        for i, item in enumerate(input_list):
-            if platform in ["YouTube", "TikTok"]:
-                data = get_yt_dlp_comments(item, platform)
-            else:
-                data = get_meta_comments(item, token, platform)
-            
-            if data:
-                all_data.extend(data)
-            progress_bar.progress((i + 1) / len(input_list))
+        status_text = st.empty()
 
+        for i, url in enumerate(urls):
+            status_text.text(f"Processing video {i+1} of {len(urls)}...")
+            data = get_tiktok_comments(url)
+            
+            if isinstance(data, list):
+                all_data.extend(data)
+            elif data == "Empty":
+                st.info(f"ℹ️ No comments found on video: {url}")
+            
+            # Update progress
+            progress_bar.progress((i + 1) / len(urls))
+            # Short pause to reduce risk of IP blocking
+            time.sleep(1) 
+
+        # --- 4. RESULTS DISPLAY ---
         if all_data:
             df = pd.DataFrame(all_data)
+            
+            st.divider()
             col1, col2 = st.columns([1, 2])
+            
             with col1:
-                st.subheader("Sentiment Distribution")
+                st.subheader("Sentiment Breakdown")
                 st.bar_chart(df['Category'].value_counts())
+                
             with col2:
-                st.subheader("Raw Data")
+                st.subheader("Comment Data")
                 st.dataframe(df, use_container_width=True)
             
             csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download Results as CSV", csv, f"{platform.lower()}_results.csv", "text/csv")
+            st.download_button("📥 Download TikTok Results", csv, "tiktok_analysis.csv", "text/csv")
         else:
-            st.error("No data found. Note: TikTok scraping can be restricted by regional blocks or private video settings.")
+            st.error("No data could be retrieved. This is likely due to TikTok's anti-scraping protections or invalid URLs.")
