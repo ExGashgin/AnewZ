@@ -67,4 +67,80 @@ def get_meta_comments(item_id, token, platform_label="Meta"):
 
 # --- 3. UI SECTION ---
 st.set_page_config(page_title="Social Sentiment Scraper", layout="wide")
-st.title("📊 Multi-
+st.title("📊 Multi-Platform Sentiment Scraper")
+st.markdown("Analyze comments from **YouTube**, **Facebook**, or **Instagram** in bulk.")
+
+# Sidebar Configuration
+st.sidebar.header("Settings")
+platform = st.sidebar.selectbox("Select Platform", ["YouTube", "Facebook", "Instagram"])
+uploaded_file = st.sidebar.file_uploader("Upload CSV/Excel list", type=["csv", "xlsx"])
+
+# Platform-specific token inputs
+token = ""
+if platform in ["Facebook", "Instagram"]:
+    token = st.sidebar.text_input(f"Enter {platform} Access Token", type="password", help="Get this from the Meta for Developers portal.")
+
+# --- 4. EXECUTION LOGIC ---
+
+# Determine the list of IDs/URLs to process
+input_list = []
+if uploaded_file:
+    df_input = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+    input_list = df_input.iloc[:, 0].dropna().tolist()
+else:
+    label = "YouTube URLs" if platform == "YouTube" else f"{platform} Object IDs"
+    text_input = st.text_area(f"Paste {label} (one per line):")
+    input_list = [i.strip() for i in text_input.split('\n') if i.strip()]
+
+if st.button(f"Analyze {platform}"):
+    if not input_list:
+        st.warning("Please provide IDs or upload a file.")
+    elif platform in ["Facebook", "Instagram"] and not token:
+        st.error("Access Token is required for Meta platforms.")
+    else:
+        all_data = []
+        progress_bar = st.progress(0)
+        
+        for i, item in enumerate(input_list):
+            if platform == "YouTube":
+                data = get_yt_comments(item)
+            else:
+                data = get_meta_comments(item, token, platform)
+            
+            if data:
+                all_data.extend(data)
+            
+            progress_bar.progress((i + 1) / len(input_list))
+
+        # Results Display
+        if all_data:
+            df = pd.DataFrame(all_data)
+            
+            col1, col2 = st.columns([1, 2])
+            with col1:
+                st.subheader("Sentiment Distribution")
+                st.bar_chart(df['Category'].value_counts())
+            
+            with col2:
+                st.subheader("Raw Data")
+                st.dataframe(df, use_container_width=True)
+            
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Results as CSV",
+                data=csv,
+                file_name=f"{platform.lower()}_sentiment_results.csv",
+                mime='text/csv'
+            )
+        else:
+            st.error("No data found. Check your IDs/URLs or API permissions.")
+
+---
+### Quick Implementation Checklist
+1.  **Dependencies**: Ensure you have `pip install streamlit pandas yt-dlp requests vaderSentiment` installed.
+2.  **Instagram Media IDs**: The API requires the **numeric Media ID** (e.g., `17841401234567890`), not the browser URL. You can find these via the Meta Graph Explorer.
+3.  **Permissions**: For Instagram, your token needs `instagram_basic` and `instagram_manage_comments`.
+
+
+
+**Would you like me to add a chart that breaks down sentiment per specific Post/URL?**
