@@ -121,4 +121,10 @@ if st.button(f"Analyze {platform}"):
                 st.subheader("Sentiment Distribution")
                 st.bar_chart(df['Category'].value_counts())
             with col2:
-                st.subheader("Raw Data
+                st.subheader("Raw Data")
+                st.dataframe(df, use_container_width=True)
+            
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Download Results as CSV", csv, f"{platform.lower()}_results.csv", "text/csv")
+        else:
+            st.error("No data found. Note: TikTok scraping can be restricted by regional blocks or private video settings.")
