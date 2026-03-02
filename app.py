@@ -16,9 +16,9 @@ def get_sentiment(text):
 
 # --- 2. TIKTOK SCRAPER FUNCTION ---
 def get_tiktok_comments(url):
-    # Ensure it's a valid URL and not a headline
+    # Ensure it's a valid link and not a headline
     if not str(url).strip().startswith("http"):
-        st.error(f"❌ '{url[:50]}...' is not a valid URL. Please paste a link.")
+        st.error(f"❌ '{url[:50]}...' is a headline. Please paste a full URL link.")
         return None
 
     ydl_opts = {
@@ -26,9 +26,11 @@ def get_tiktok_comments(url):
         'skip_download': True, 
         'quiet': True,
         'extract_flat': True,
-        'check_formats': False,
-        # Adding a common user-agent helps bypass basic bot detection
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        # 'cookiesfrombrowser': ('chrome',), # UNCOMMENT THIS if running on your local computer
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        }
     }
     
     try:
@@ -37,17 +39,17 @@ def get_tiktok_comments(url):
             comments = info.get('comments', [])
             
             if not comments:
-                return "Empty" # Distinguish between error and just no comments
+                return "Empty" 
                 
             return [{
-                "Author": c.get('author') or "Anonymous", 
+                "Author": c.get('author') or "User", 
                 "Text": c.get('text'), 
                 "Category": get_sentiment(c.get('text')), 
                 "Video_URL": url
             } for c in comments]
     except Exception as e:
-        # This catches regional blocks or private video settings
-        st.warning(f"⚠️ TikTok blocked access to: {url}")
+        # Catch regional blocks or "Unable to extract" errors
+        st.warning(f"⚠️ TikTok Blocked Access. Try running this locally with browser cookies.")
         return None
 
 # --- 3. UI SECTION ---
