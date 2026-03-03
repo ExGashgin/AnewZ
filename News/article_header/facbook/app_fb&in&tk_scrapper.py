@@ -9,7 +9,9 @@ st.set_page_config(page_title="Text Intelligence Dashboard", page_icon="📝", l
 GENRE_MAP = {
     "World": ["un", "nato", "global", "international", "world", "foreign", "diplomacy"],
     "Politics": ["election", "president", "minister", "parliament", "government", "protest"],
+    "Conflict & Security": ["strike", "military", "targeted", "attack", "war", "conflict", "security", "base", "retaliatory", "clash"],
     "Economy": ["oil", "gas", "price", "business", "market", "finance", "bank", "dollar"],
+    "Culture": ["cuisine", "art", "music", "festival", "tradition", "heritage", "food", "museum", "history", "cultural"],
     "Sports": ["football", "goal", "match", "league", "win", "player", "tournament"],
     "Technology": ["ai", "tech", "software", "google", "meta", "cyber", "robot"],
     "Region": ["baku", "caucasus", "tbilisi", "karabakh", "central asia"]
