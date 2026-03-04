@@ -30,19 +30,29 @@ except ImportError:
 analyzer = SentimentIntensityAnalyzer()
 
 def scrape_tiktok(url):
-    cookie_file = "tiktok_cookies.txt"
-    # Your confirmed working proxy
+    # Updated path to match your GitHub structure
+    cookie_file = "comment_scrapers/tiktok/tiktok_cookies.txt"
+    
+    # Check if the folder exists for debugging
+    if not os.path.exists(cookie_file):
+        return f"ERROR: File not found at {cookie_file}. Check folder structure."
+
+    # Your working Webshare proxy
     my_proxy = "http://pcrlcxjv:hl1zglfn47du@31.59.20.176:6754/"
 
-    if not os.path.exists(cookie_file):
-        return "ERROR: tiktok_cookies.txt not found in GitHub."
-
-    # Rotating through different API nodes to find one that trusts your proxy
-    api_nodes = [
-        'api16-normal-c-useast1a.tiktokv.com',
-        'api22-normal-c-useast2a.tiktokv.com',
-        'api-h2.tiktokv.com'
-    ]
+    ydl_opts = {
+        'getcomments': True,
+        'skip_download': True,
+        'quiet': True,
+        'cookiefile': cookie_file, # Uses the new path
+        'proxy': my_proxy,
+        'impersonate': yt_dlp.networking.impersonate.ImpersonateTarget.from_str('chrome'),
+        'extractor_args': {
+            'tiktok': {
+                'api_hostname': 'api-h2.tiktokv.com',
+            }
+        },
+    }
     
     ydl_opts = {
         'getcomments': True,
