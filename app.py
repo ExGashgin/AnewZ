@@ -41,7 +41,7 @@ def scrape_tiktok(url):
     cookie_file = "tiktok_cookies.txt"
     
     # YOUR WORKING PROXY STRING
-    my_proxy = "http://pcrlcxjv:hl1zglfn47du@31.59.20.176:6754/"
+    my_proxy = "http://pcrlcxjv:hl1zglfn47du@194.39.32.164:6461/"
 
     if not os.path.exists(cookie_file):
         return "ERROR: Missing tiktok_cookies.txt in your GitHub repository."
