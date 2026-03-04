@@ -12,60 +12,63 @@ analyzer = SentimentIntensityAnalyzer()
 def get_sentiment(text):
     if not text: return "Neutral"
     score = analyzer.polarity_scores(text)
-    return "Positive" if score['compound'] >= 0.05 else "Negative" if score['compound'] <= -0.05 else "Neutral"
+    if score['compound'] >= 0.05: return "Positive"
+    if score['compound'] <= -0.05: return "Negative"
+    return "Neutral"
 
-def get_tiktok_comments(url):
+def get_tiktok_comments(url, debug=False):
     cookie_file = "tiktok_cookies.txt"
+    
+    # Advanced 2026 Options for TikTok
     ydl_opts = {
         'getcomments': True, 
         'skip_download': True, 
-        'quiet': True,
+        'quiet': not debug,
         'extract_flat': False,
-        'no_warnings': True,
+        'no_warnings': False,
+        'impersonate': 'chrome', # Crucial: Mimics a real browser TLS/Fingerprint
+        'extractor_args': {
+            'tiktok': {
+                'api_hostname': 'api22-normal-c-useast2a.tiktokv.com',
+                'app_name': 'musical_ly'
+            }
+        },
     }
 
     if os.path.exists(cookie_file):
         ydl_opts['cookiefile'] = cookie_file
+    elif not debug:
+        st.warning("⚠️ No 'tiktok_cookies.txt' found. Comments will likely be empty.")
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # extract_info is the main heavy lifter
             info = ydl.extract_info(url, download=False)
             comments = info.get('comments', [])
+            
+            if not comments:
+                return "EMPTY"
+            
             return [{
                 "Author": c.get('author'),
                 "Text": c.get('text'),
                 "Category": get_sentiment(c.get('text')),
+                "Likes": c.get('like_count', 0),
                 "URL": url
             } for c in comments]
     except Exception as e:
-        st.error(f"Error on {url}: {str(e)}")
-        return None
+        return f"ERROR: {str(e)}"
 
 # --- UI SECTION ---
-st.title("🎵 TikTok Sentiment Scraper (Human Mode)")
-st.info("💡 A random delay (4–9s) is active to prevent TikTok IP blocks.")
+st.set_page_config(page_title="TikTok AI Sentiment", layout="wide")
+st.title("🎵 TikTok Bulk Sentiment Analyzer")
 
-urls_input = st.text_area("Paste TikTok URLs (one per line):")
-
-if st.button("Start Scraping"):
-    urls = [u.strip() for u in urls_input.split('\n') if u.strip()]
-    all_data = []
-    
-    for idx, url in enumerate(urls):
-        st.write(f"🔄 Processing ({idx+1}/{len(urls)}): {url}")
-        data = get_tiktok_comments(url)
-        if data:
-            all_data.extend(data)
-            st.success(f"✅ Found {len(data)} comments.")
-        
-        # Human-like delay logic
-        if idx < len(urls) - 1:
-            wait_time = random.uniform(4.0, 9.0)
-            st.write(f"⏳ Waiting {wait_time:.1f}s to avoid detection...")
-            time.sleep(wait_time)
-            
-    if all_data:
-        df = pd.DataFrame(all_data)
-        st.bar_chart(df['Category'].value_counts())
-        st.dataframe(df)
-        st.download_button("Download CSV", df.to_csv(index=False), "tiktok_analysis.csv")
+with st.sidebar:
+    st.header("Settings")
+    debug_mode = st.checkbox("Enable Debug Mode", help="Shows the raw logs if things fail.")
+    min_delay = st.slider("Min Delay (s)", 2, 10, 4)
+    max_delay = st.slider("Max Delay (s)", 11, 30, 15)
+    st.divider()
+    if os.path.exists("tiktok_cookies.txt"):
+        st.success("✅ Cookies detected")
+    else
