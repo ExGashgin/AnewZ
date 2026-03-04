@@ -1,5 +1,4 @@
 streamlit
 pandas
-requests
+yt-dlp
 vaderSentiment
-openpyxl
