@@ -1,4 +1,4 @@
 streamlit
 pandas
-yt-dlp
 vaderSentiment
+yt-dlp[default,curl-cffi]
