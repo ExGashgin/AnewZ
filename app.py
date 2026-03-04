@@ -71,4 +71,51 @@ with st.sidebar:
     st.divider()
     if os.path.exists("tiktok_cookies.txt"):
         st.success("✅ Cookies detected")
-    else
+    else:
+        st.error("❌ Cookies missing")
+
+urls_input = st.text_area("Paste TikTok URLs (One per line):", height=150)
+
+if st.button("🚀 Start Deep Analysis"):
+    urls = [u.strip() for u in urls_input.split('\n') if u.strip()]
+    all_data = []
+    
+    if not urls:
+        st.error("Please provide at least one URL.")
+    else:
+        progress_bar = st.progress(0)
+        for idx, url in enumerate(urls):
+            st.write(f"🔍 **Analyzing:** {url}")
+            
+            result = get_tiktok_comments(url, debug=debug_mode)
+            
+            if result == "EMPTY":
+                st.warning("No comments found. This usually means TikTok blocked the request or the video has comments disabled.")
+            elif isinstance(result, str) and result.startswith("ERROR"):
+                st.error(result)
+            else:
+                all_data.extend(result)
+                st.success(f"Successfully pulled {len(result)} comments.")
+
+            # Progress & Delay
+            progress_bar.progress((idx + 1) / len(urls))
+            if idx < len(urls) - 1:
+                wait = random.uniform(min_delay, max_delay)
+                st.write(f"⏳ Sleeping {wait:.1f}s...")
+                time.sleep(wait)
+        
+        if all_data:
+            df = pd.DataFrame(all_data)
+            
+            # --- Results Dashboard ---
+            st.divider()
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                st.metric("Total Comments", len(df))
+                st.write("### Sentiment Split")
+                st.table(df['Category'].value_counts())
+            with c2:
+                st.bar_chart(df['Category'].value_counts())
+            
+            st.dataframe(df, use_container_width=True)
+            st.download_button("📥 Download Results", df.to_csv(index=False), "tiktok_sentiment.csv")
