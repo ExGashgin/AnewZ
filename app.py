@@ -36,7 +36,7 @@ def scrape_tiktok(url, proxy_url=None):
 
     # Add proxy if provided to bypass Cloud IP blocks
     if proxy_url:
-        ydl_opts['proxy'] = proxy_url
+        ydl_opts['proxy'] = http://pcrlcxjv:hl1zglfn47du@31.59.20.176:6754
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
