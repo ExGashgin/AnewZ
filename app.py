@@ -6,6 +6,7 @@ import time
 import random
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
+# Initialize analyzer
 analyzer = SentimentIntensityAnalyzer()
 
 def get_sentiment(text):
@@ -15,7 +16,6 @@ def get_sentiment(text):
 
 def get_tiktok_comments(url):
     cookie_file = "tiktok_cookies.txt"
-    
     ydl_opts = {
         'getcomments': True, 
         'skip_download': True, 
@@ -29,10 +29,8 @@ def get_tiktok_comments(url):
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Extracting info
             info = ydl.extract_info(url, download=False)
             comments = info.get('comments', [])
-            
             return [{
                 "Author": c.get('author'),
                 "Text": c.get('text'),
@@ -45,7 +43,7 @@ def get_tiktok_comments(url):
 
 # --- UI SECTION ---
 st.title("🎵 TikTok Sentiment Scraper (Human Mode)")
-st.info("💡 Note: A random delay is active between videos to prevent TikTok from blocking your IP.")
+st.info("💡 A random delay (4–9s) is active to prevent TikTok IP blocks.")
 
 urls_input = st.text_area("Paste TikTok URLs (one per line):")
 
@@ -53,24 +51,21 @@ if st.button("Start Scraping"):
     urls = [u.strip() for u in urls_input.split('\n') if u.strip()]
     all_data = []
     
-    total_urls = len(urls)
     for idx, url in enumerate(urls):
-        st.write(f"🔄 Processing ({idx+1}/{total_urls}): {url}")
-        
+        st.write(f"🔄 Processing ({idx+1}/{len(urls)}): {url}")
         data = get_tiktok_comments(url)
         if data:
             all_data.extend(data)
             st.success(f"✅ Found {len(data)} comments.")
         
-        # --- DELAY LOGIC ---
-        if idx < total_urls - 1: # No need to wait after the very last video
-            wait_time = random.uniform(4.0, 9.0) # Random float between 4 and 9 seconds
-            st.write(f"⏳ Mimicking human scroll... waiting {wait_time:.1f}s")
+        # Human-like delay logic
+        if idx < len(urls) - 1:
+            wait_time = random.uniform(4.0, 9.0)
+            st.write(f"⏳ Waiting {wait_time:.1f}s to avoid detection...")
             time.sleep(wait_time)
             
     if all_data:
         df = pd.DataFrame(all_data)
-        st.subheader("Results Summary")
         st.bar_chart(df['Category'].value_counts())
         st.dataframe(df)
         st.download_button("Download CSV", df.to_csv(index=False), "tiktok_analysis.csv")
