@@ -5,12 +5,12 @@ import pandas as pd
 import time
 import random
 
-# --- 1. CLOUD BOOTSTRAP (Bypass 403 Errors) ---
+# --- 1. CLOUD BOOTSTRAP (Required for TikTok JS Challenges) ---
 def ensure_deno():
-    """Installs Deno in the Streamlit Cloud environment for JS challenge solving."""
+    """Installs Deno in the Streamlit Cloud environment to solve security puzzles."""
     deno_path = os.path.expanduser("~/.deno/bin")
     if not os.path.exists(os.path.join(deno_path, "deno")):
-        with st.spinner("🛠️ Setting up Cloud Security Engine (Deno)..."):
+        with st.spinner("🛠️ Setting up Security Engine (Deno)..."):
             subprocess.run("curl -fsSL https://deno.land/x/install/install.sh | sh", shell=True)
     
     if deno_path not in os.environ["PATH"]:
@@ -24,10 +24,10 @@ try:
     from yt_dlp.networking.impersonate import ImpersonateTarget
     from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 except ImportError:
-    st.error("Missing requirements. Ensure 'yt-dlp[default,curl-cffi]' is in requirements.txt.")
+    st.error("Missing libraries. Ensure 'yt-dlp[default,curl-cffi]' and 'vaderSentiment' are in requirements.txt.")
     st.stop()
 
-# --- 3. LOGIC ---
+# --- 3. SCRAPING LOGIC ---
 analyzer = SentimentIntensityAnalyzer()
 
 def get_sentiment(text):
@@ -37,21 +37,25 @@ def get_sentiment(text):
     if score['compound'] <= -0.05: return "Negative"
     return "Neutral"
 
-def scrape_tiktok(url, proxy_url=None):
+def scrape_tiktok(url):
     cookie_file = "tiktok_cookies.txt"
     
-    if not os.path.exists(cookie_file):
-        return "ERROR: Missing tiktok_cookies.txt"
+    # YOUR WORKING PROXY STRING
+    my_proxy = "http://pcrlcxjv:hl1zglfn47du@31.59.20.176:6754/"
 
-    # 2026 Hardened Options
+    if not os.path.exists(cookie_file):
+        return "ERROR: Missing tiktok_cookies.txt in your GitHub repository."
+
     ydl_opts = {
         'getcomments': True,
         'skip_download': True,
         'quiet': True,
         'extract_flat': False,
         'cookiefile': cookie_file,
-        'impersonate': ImpersonateTarget.from_str('chrome'), # Mimics Chrome TLS fingerprint
-        'proxy': proxy_url if proxy_url else None, # Bypasses Cloud IP bans
+        # Mandatory 2026 TLS Impersonation
+        'impersonate': ImpersonateTarget.from_str('chrome'),
+        # Integrated Proxy
+        'proxy': my_proxy,
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -59,7 +63,7 @@ def scrape_tiktok(url, proxy_url=None):
         },
         'extractor_args': {
             'tiktok': {
-                'api_hostname': 'api16-normal-c-useast1a.tiktokv.com', # Alternate API node
+                'api_hostname': 'api16-normal-c-useast1a.tiktokv.com',
                 'app_name': 'musical_ly',
             }
         },
@@ -74,23 +78,16 @@ def scrape_tiktok(url, proxy_url=None):
         return f"CRITICAL ERROR: {str(e)}"
 
 # --- 4. STREAMLIT UI ---
-st.set_page_config(page_title="TikTok AI Scraper 2026", layout="wide")
+st.set_page_config(page_title="TikTok AI Sentiment Scraper", layout="wide")
 st.title("🎵 TikTok Cloud Scraper")
+st.subheader("2026 Hardened Edition with Webshare Proxy")
 
-with st.sidebar:
-    st.header("Settings")
-    # Wrap input in quotes internally to avoid SyntaxError
-    proxy_input = st.text_input("Residential Proxy", placeholder="http://user:pass@host:port")
-    st.info("💡 If you get 'EMPTY', your Proxy is likely blocked or not Residential.")
-    
-    if os.path.exists("tiktok_cookies.txt"):
-        st.success("✅ Cookies Detected")
-    else:
-        st.error("❌ Cookies Missing")
+if not os.path.exists("tiktok_cookies.txt"):
+    st.error("🚨 tiktok_cookies.txt NOT FOUND. Please upload it to your GitHub repo.")
 
 url_input = st.text_area("Paste TikTok URLs (one per line):", height=150)
 
-if st.button("🚀 Start Deep Analysis"):
+if st.button("🚀 Start Analysis"):
     urls = [u.strip() for u in url_input.split('\n') if u.strip()]
     
     if not urls:
@@ -100,13 +97,12 @@ if st.button("🚀 Start Deep Analysis"):
         progress_bar = st.progress(0)
         
         for idx, url in enumerate(urls):
-            st.write(f"🔍 Processing: {url}")
+            st.write(f"🔍 Analyzing: {url}")
             
-            # Pass the proxy string directly to the function
-            result = scrape_tiktok(url, proxy_url=proxy_input if proxy_input else None)
+            result = scrape_tiktok(url)
             
             if result == "EMPTY":
-                st.error(f"TikTok returned no data for this video. Try a different proxy.")
+                st.error("TikTok returned no data. Your proxy might be throttled or cookies expired.")
             elif isinstance(result, str) and "ERROR" in result:
                 st.error(result)
             else:
@@ -117,21 +113,22 @@ if st.button("🚀 Start Deep Analysis"):
                         "Sentiment": get_sentiment(c.get('text')),
                         "Video": url
                     })
-                st.success(f"Successfully pulled {len(result)} comments!")
+                st.success(f"Fetched {len(result)} comments!")
 
             progress_bar.progress((idx + 1) / len(urls))
+            # Human-like delay to prevent proxy burnout
             if idx < len(urls) - 1:
-                time.sleep(random.uniform(3, 7)) # Human behavior simulation
+                time.sleep(random.uniform(3, 6))
 
         if all_comments:
             df = pd.DataFrame(all_comments)
             st.divider()
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("Sentiment Summary")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.write("### Sentiment Summary")
                 st.bar_chart(df['Sentiment'].value_counts())
-            with col2:
-                st.subheader("Raw Data")
+            with c2:
+                st.write("### Raw Data")
                 st.dataframe(df, use_container_width=True)
             
-            st.download_button("📥 Download Results (CSV)", df.to_csv(index=False), "tiktok_analysis.csv")
+            st.download_button("📥 Download CSV", df.to_csv(index=False), "tiktok_sentiment.csv")
