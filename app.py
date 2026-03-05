@@ -14,91 +14,86 @@ def get_sentiment(text):
     elif score <= -0.05: return "Negative"
     return "Neutral"
 
-# Scraper Functions
 def get_yt_comments(url):
-    ydl_opts = {'getcomments': True, 'skip_download': True, 'quiet': True, 'max_comments': 40}
+    # 'getcomments': True pulls all metadata available
+    ydl_opts = {
+        'getcomments': True, 
+        'skip_download': True, 
+        'quiet': True, 
+        'max_comments': 50,
+        'extract_flat': True
+    }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            # Return all metadata from YouTube
             comments = info.get('comments', [])
+            
+            # Add sentiment to each comment object
             for c in comments:
                 c['Sentiment_Category'] = get_sentiment(c.get('text'))
             return comments
-    except: return None
+    except Exception as e:
+        st.warning(f"Could not fetch comments for {url}: {e}")
+        return None
 
-def get_meta_comments(obj_id, token, platform):
-    url = f"https://graph.facebook.com/v22.0/{obj_id}/comments"
-    # Added more fields to Meta request to be safe
-    fields = 'text,username,timestamp,like_count' if platform == "Instagram" else 'message,from,created_time,like_count'
-    try:
-        r = requests.get(url, params={'access_token': token, 'fields': fields}, timeout=10).json()
-        if "error" in r: return None
-        data = r.get('data', [])
-        for c in data:
-            msg = c.get('text') if platform == "Instagram" else c.get('message')
-            c['Sentiment_Category'] = get_sentiment(msg)
-        return data
-    except: return None
+# --- UI Setup ---
+st.set_page_config(page_title="YouTube Multi-Column Scraper", layout="wide")
+st.title("🎥 YouTube Comment Scraper")
+st.markdown("Upload a CSV with YouTube URLs to scrape all comments while keeping your original data.")
 
-# UI
-st.set_page_config(page_title="Social Scraper", layout="wide")
-st.title("📊 Social Sentiment Scraper (Keep Original Columns)")
-
-platform = st.sidebar.selectbox("Platform", ["YouTube", "Facebook", "Instagram"])
-token = st.sidebar.text_input("Token", type="password") if platform != "YouTube" else ""
-
-# File Uploader
-uploaded_file = st.sidebar.file_uploader("Upload your CSV", type=["csv", "xlsx"])
+# Sidebar for file upload
+uploaded_file = st.sidebar.file_uploader("Step 1: Upload CSV/Excel", type=["csv", "xlsx"])
 
 if uploaded_file:
-    # Read the original CSV/Excel
+    # Read original data
     if uploaded_file.name.endswith('.csv'):
         df_original = pd.read_csv(uploaded_file)
     else:
         df_original = pd.read_excel(uploaded_file)
     
-    st.write("### Original Data Preview", df_original.head(3))
+    st.write("### 1. Preview Original Data", df_original.head(3))
     
-    # User selects which column contains the ID or URL
-    id_column = st.selectbox("Select the column containing IDs or URLs", df_original.columns)
+    # Step 2: Select the URL column
+    url_col = st.selectbox("Step 2: Select the column containing YouTube URLs", df_original.columns)
 
-    if st.button("Run Analysis"):
-        all_rows = []
+    if st.button("Step 3: Run Full Scrape"):
+        all_results = []
         progress_bar = st.progress(0)
         
+        # Iterate through your CSV rows
         for index, row in df_original.iterrows():
-            item = str(row[id_column]).strip()
+            video_url = str(row[url_col]).strip()
             
-            # Fetch comments based on platform
-            if platform == "YouTube": 
-                fetched_data = get_yt_comments(item)
-            else: 
-                fetched_data = get_meta_comments(item, token, platform)
+            # Fetch comments
+            comments_data = get_yt_comments(video_url)
             
-            if fetched_data:
-                for comment in fetched_data:
-                    # Create a copy of the original row data
-                    combined_row = row.to_dict()
-                    # Update it with the new comment data and sentiment
-                    combined_row.update(comment)
-                    all_rows.append(combined_row)
+            if comments_data:
+                for comment in comments_data:
+                    # MERGE: Combine the original CSV row with the new comment data
+                    full_row = row.to_dict()
+                    full_row.update(comment) # This keeps ALL YouTube metadata columns
+                    all_results.append(full_row)
             else:
-                # If no comments found, still keep the original row but leave sentiment empty
-                combined_row = row.to_dict()
-                combined_row['Sentiment_Category'] = "No Comments Found"
-                all_rows.append(combined_row)
+                # Keep the row even if no comments found
+                empty_row = row.to_dict()
+                empty_row['Sentiment_Category'] = "No comments found or error"
+                all_results.append(empty_row)
             
             progress_bar.progress((index + 1) / len(df_original))
         
-        if all_rows:
-            df_final = pd.DataFrame(all_rows)
+        # Display and Download
+        if all_results:
+            df_final = pd.DataFrame(all_results)
             
-            # Reorder: Put original columns first, then new ones
-            st.success(f"Analysis complete! Found {len(df_final)} total comment rows.")
+            # Reorder to put Sentiment first for visibility
+            if 'Sentiment_Category' in df_final.columns:
+                cols = ['Sentiment_Category'] + [c for c in df_final.columns if c != 'Sentiment_Category']
+                df_final = df_final[cols]
+
+            st.success(f"Done! Scraped {len(df_final)} total rows.")
             st.dataframe(df_final)
             
-            csv = df_final.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download Combined Results", csv, "combined_sentiment_data.csv", "text/csv")
+            csv_data = df_final.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Download Full Result CSV", csv_data, "youtube_full_analysis.csv", "text/csv")
 else:
-    st.info("Please upload a CSV file to begin.")
+    st.info("Please upload your CSV file in the sidebar to start.")
