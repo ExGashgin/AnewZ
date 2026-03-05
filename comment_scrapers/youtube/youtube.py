@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import yt_dlp
+from datetime import datetime
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 # Initialize the analyzer
@@ -17,6 +18,15 @@ def get_sentiment(text):
         return "Negative"
     else:
         return "Neutral"
+
+def format_timestamp(ts):
+    """Converts Unix timestamp to readable date string"""
+    if ts:
+        try:
+            return datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+        except:
+            return "Unknown"
+    return "N/A"
 
 def get_comments_bulk(url):
     ydl_opts = {
@@ -35,11 +45,11 @@ def get_comments_bulk(url):
             for c in comments:
                 comment_text = c.get('text')
                 results.append({
-                    "Comment_ID": c.get('id'),         # <--- NEW FIELD ADDED HERE
+                    "Comment_ID": c.get('id'),
                     "Comment_Author": c.get('author'),
                     "Comment_Text": comment_text,
                     "Sentiment_Category": get_sentiment(comment_text),
-                    "Comment_Date": c.get('timestamp')
+                    "Comment_Date": format_timestamp(c.get('timestamp')) # <--- CONVERTED DATE
                 })
             return results
     except Exception as e:
@@ -55,46 +65,4 @@ uploaded_file = st.sidebar.file_uploader("Upload CSV or Excel", type=["csv", "xl
 
 if uploaded_file:
     if uploaded_file.name.endswith('.csv'):
-        df_input = pd.read_csv(uploaded_file)
-    else:
-        df_input = pd.read_excel(uploaded_file)
-
-    st.write("### Data Preview", df_input.head(3))
-    
-    url_column = st.selectbox("Select the column that contains YouTube URLs", df_input.columns)
-
-    if st.button("Run Bulk Scrape & Analyze"):
-        final_data = []
-        progress_bar = st.progress(0)
-        
-        for index, row in df_input.iterrows():
-            url = str(row[url_column]).strip()
-            
-            if url and ("youtube.com" in url or "youtu.be" in url):
-                st.write(f"Scraping: {url}")
-                comments = get_comments_bulk(url)
-                
-                if comments:
-                    for c in comments:
-                        new_row = row.to_dict()
-                        new_row.update(c) 
-                        final_data.append(new_row)
-                else:
-                    no_data_row = row.to_dict()
-                    no_data_row["Comment_ID"] = "N/A" # Placeholders for consistency
-                    no_data_row["Sentiment_Category"] = "No Comments Found"
-                    final_data.append(no_data_row)
-            
-            progress_bar.progress((index + 1) / len(df_input))
-
-        if final_data:
-            df_final = pd.DataFrame(final_data)
-            
-            st.subheader("Analysis Results")
-            st.bar_chart(df_final['Sentiment_Category'].value_counts())
-            st.dataframe(df_final)
-            
-            csv = df_final.to_csv(index=False).encode('utf-8')
-            st.download_button("Download Full Results (CSV)", csv, "youtube_analysis.csv", "text/csv")
-else:
-    st.info("Please upload a CSV or Excel file to get started.")
+        df_input = pd.read_csv(uploaded_file
