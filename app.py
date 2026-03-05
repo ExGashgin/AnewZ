@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import yt_dlp
 import requests
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
@@ -14,86 +13,69 @@ def get_sentiment(text):
     elif score <= -0.05: return "Negative"
     return "Neutral"
 
-def get_yt_comments(url):
-    # 'getcomments': True pulls all metadata available
-    ydl_opts = {
-        'getcomments': True, 
-        'skip_download': True, 
-        'quiet': True, 
-        'max_comments': 50,
-        'extract_flat': True
-    }
+# Scraper Function for Meta (FB/IG)
+def get_meta_comments(obj_id, token, platform):
+    # Endpoint for comments
+    url = f"https://graph.facebook.com/v22.0/{obj_id}/comments"
+    
+    # Instagram uses 'text', Facebook uses 'message'
+    fields = 'text,username,timestamp,like_count' if platform == "Instagram" else 'message,from,created_time,like_count'
+    
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            comments = info.get('comments', [])
+        r = requests.get(url, params={'access_token': token, 'fields': fields}, timeout=15).json()
+        
+        if "error" in r:
+            st.error(f"Meta API Error for ID {obj_id}: {r['error'].get('message')}")
+            return None
             
-            # Add sentiment to each comment object
-            for c in comments:
-                c['Sentiment_Category'] = get_sentiment(c.get('text'))
-            return comments
+        data = r.get('data', [])
+        for c in data:
+            # Extract content based on platform to run sentiment
+            msg = c.get('text') if platform == "Instagram" else c.get('message')
+            c['Sentiment_Category'] = get_sentiment(msg)
+            
+            # Flatten the 'from' dictionary in Facebook to make it CSV friendly
+            if platform == "Facebook" and 'from' in c:
+                c['Author_Name'] = c['from'].get('name')
+                c['Author_ID'] = c['from'].get('id')
+        return data
     except Exception as e:
-        st.warning(f"Could not fetch comments for {url}: {e}")
+        st.error(f"Connection Error: {e}")
         return None
 
-# --- UI Setup ---
-st.set_page_config(page_title="YouTube Multi-Column Scraper", layout="wide")
-st.title("🎥 YouTube Comment Scraper")
-st.markdown("Upload a CSV with YouTube URLs to scrape all comments while keeping your original data.")
+# --- UI SECTION ---
+st.set_page_config(page_title="Meta Sentiment Scraper", layout="wide")
+st.title("📊 Meta Sentiment Scraper (FB & IG)")
+st.markdown("Scrape comments from Facebook or Instagram while preserving all original CSV columns.")
 
-# Sidebar for file upload
-uploaded_file = st.sidebar.file_uploader("Step 1: Upload CSV/Excel", type=["csv", "xlsx"])
+# Sidebar Settings
+platform = st.sidebar.selectbox("Select Platform", ["Facebook", "Instagram"])
+token = st.sidebar.text_input(f"Enter {platform} Page Access Token", type="password")
+
+# File Uploader
+uploaded_file = st.sidebar.file_uploader("Upload your CSV/Excel list", type=["csv", "xlsx"])
 
 if uploaded_file:
-    # Read original data
+    # Read the original file
     if uploaded_file.name.endswith('.csv'):
         df_original = pd.read_csv(uploaded_file)
     else:
         df_original = pd.read_excel(uploaded_file)
     
-    st.write("### 1. Preview Original Data", df_original.head(3))
+    st.write("### Original Data Preview", df_original.head(3))
     
-    # Step 2: Select the URL column
-    url_col = st.selectbox("Step 2: Select the column containing YouTube URLs", df_original.columns)
+    # User selects column with Post IDs
+    id_column = st.selectbox("Select the column containing Post IDs or Media IDs", df_original.columns)
 
-    if st.button("Step 3: Run Full Scrape"):
-        all_results = []
-        progress_bar = st.progress(0)
-        
-        # Iterate through your CSV rows
-        for index, row in df_original.iterrows():
-            video_url = str(row[url_col]).strip()
+    if st.button(f"Analyze {platform}"):
+        if not token:
+            st.warning("Please enter a valid Access Token in the sidebar.")
+        else:
+            all_rows = []
+            progress_bar = st.progress(0)
             
-            # Fetch comments
-            comments_data = get_yt_comments(video_url)
-            
-            if comments_data:
-                for comment in comments_data:
-                    # MERGE: Combine the original CSV row with the new comment data
-                    full_row = row.to_dict()
-                    full_row.update(comment) # This keeps ALL YouTube metadata columns
-                    all_results.append(full_row)
-            else:
-                # Keep the row even if no comments found
-                empty_row = row.to_dict()
-                empty_row['Sentiment_Category'] = "No comments found or error"
-                all_results.append(empty_row)
-            
-            progress_bar.progress((index + 1) / len(df_original))
-        
-        # Display and Download
-        if all_results:
-            df_final = pd.DataFrame(all_results)
-            
-            # Reorder to put Sentiment first for visibility
-            if 'Sentiment_Category' in df_final.columns:
-                cols = ['Sentiment_Category'] + [c for c in df_final.columns if c != 'Sentiment_Category']
-                df_final = df_final[cols]
-
-            st.success(f"Done! Scraped {len(df_final)} total rows.")
-            st.dataframe(df_final)
-            
-            csv_data = df_final.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download Full Result CSV", csv_data, "youtube_full_analysis.csv", "text/csv")
-else:
-    st.info("Please upload your CSV file in the sidebar to start.")
+            for index, row in df_original.iterrows():
+                item_id = str(row[id_column]).strip()
+                
+                # Fetch comments from Meta
+                fetched_data = get_meta_comments(item_id, token, platform)
