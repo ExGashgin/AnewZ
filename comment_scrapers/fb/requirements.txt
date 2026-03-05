@@ -1,5 +1,0 @@
-streamlit
-pandas
-yt-dlp
-vaderSentiment
-requests
