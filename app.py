@@ -1,113 +1,124 @@
 import streamlit as st
-import os
-import subprocess
 import pandas as pd
-import time
-import random
+import yt_dlp
+import requests
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-# --- 1. CLOUD BOOTSTRAP (Required for 2026 JS Challenges) ---
-def ensure_deno():
-    """Installs Deno to solve TikTok's mandatory JS puzzles."""
-    deno_path = os.path.expanduser("~/.deno/bin")
-    if not os.path.exists(os.path.join(deno_path, "deno")):
-        with st.spinner("🛠️ Syncing Security Engine (Deno)..."):
-            subprocess.run("curl -fsSL https://deno.land/x/install/install.sh | sh", shell=True)
-    if deno_path not in os.environ["PATH"]:
-        os.environ["PATH"] += os.pathsep + deno_path
-
-ensure_deno()
-
-# --- 2. IMPORTS ---
-try:
-    import yt_dlp
-    from yt_dlp.networking.impersonate import ImpersonateTarget
-    from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-except ImportError:
-    st.error("Missing requirements. Ensure 'yt-dlp[default,curl-cffi]' is in requirements.txt.")
-    st.stop()
-
-# --- 3. SCRAPER LOGIC ---
+# --- 1. SETUP & SENTIMENT LOGIC ---
 analyzer = SentimentIntensityAnalyzer()
 
-def scrape_tiktok(url):
-    cookie_file = "tiktok_cookies.txt"
-    # Your confirmed working proxy
-    my_proxy = "http://pcrlcxjv:hl1zglfn47du@31.59.20.176:6754/"
+def get_sentiment(text):
+    if not text: return "Neutral"
+    score = analyzer.polarity_scores(str(text))['compound']
+    if score >= 0.05: return "Positive"
+    elif score <= -0.05: return "Negative"
+    return "Neutral"
 
-    if not os.path.exists(cookie_file):
-        return "ERROR: tiktok_cookies.txt not found in GitHub."
+# --- 2. API SCRAPERS ---
 
-    # Rotating through different API nodes to find one that trusts your proxy
-    api_nodes = [
-        'api16-normal-c-useast1a.tiktokv.com',
-        'api22-normal-c-useast2a.tiktokv.com',
-        'api-h2.tiktokv.com'
-    ]
-    
-    ydl_opts = {
-        'getcomments': True,
-        'skip_download': True,
-        'quiet': True,
-        'cookiefile': cookie_file,
-        'impersonate': ImpersonateTarget.from_str('chrome'), # 2026 TLS spoofing
-        'proxy': my_proxy,
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Referer': 'https://www.tiktok.com/',
-        },
-        'extractor_args': {
-            'tiktok': {
-                'api_hostname': random.choice(api_nodes), # Randomize node to avoid rate limits
-                'app_name': 'musical_ly',
-            }
-        },
-    }
-
+def get_yt_comments(url):
+    ydl_opts = {'getcomments': True, 'skip_download': True, 'quiet': True}
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            comments = info.get('comments', [])
-            return comments if comments else "EMPTY"
+            return [{"Author": c.get('author'), "Text": c.get('text'), 
+                     "Category": get_sentiment(c.get('text')), "Source": url} 
+                    for c in info.get('comments', [])]
     except Exception as e:
-        return f"CRITICAL ERROR: {str(e)}"
+        st.warning(f"YouTube Error for {url}: {str(e)}")
+        return None
 
-# --- 4. STREAMLIT UI ---
-st.set_page_config(page_title="TikTok AI Scraper", layout="wide")
-st.title("🎵 TikTok Cloud Scraper (2026 Bypass)")
+def get_fb_comments(post_id, token):
+    url = f"https://graph.facebook.com/v22.0/{post_id}/comments"
+    params = {'access_token': token, 'fields': 'message,from'}
+    response = requests.get(url, params=params).json()
+    
+    if "error" in response:
+        st.error(f"FB Error: {response['error'].get('message')}")
+        return None
+        
+    return [{"Author": c.get('from', {}).get('name'), "Text": c.get('message'),
+             "Category": get_sentiment(c.get('message')), "Source": post_id} 
+            for c in response.get('data', [])]
 
-# Check connection status in sidebar
-with st.sidebar:
-    st.header("Connection Status")
-    if st.button("🕵️ Run Diagnostic"):
-        try:
-            # Test if proxy is live and working
-            ip = subprocess.check_output(f'curl --proxy "http://pcrlcxjv:hl1zglfn47du@31.59.20.176:6754/" -s https://ifconfig.me', shell=True).decode()
-            st.write(f"✅ Proxy Live: {ip}")
-            # Test if Deno is available
-            st.write("✅ Deno Engine: Ready")
-        except:
-            st.error("❌ Proxy/Deno Failed")
+def get_ig_comments(media_id, token):
+    # Instagram uses the same comments endpoint but fields differ slightly ('text' vs 'message')
+    url = f"https://graph.facebook.com/v22.0/{media_id}/comments"
+    params = {'access_token': token, 'fields': 'text,username'}
+    response = requests.get(url, params=params).json()
+    
+    if "error" in response:
+        st.error(f"IG Error for {media_id}: {response['error'].get('message')}")
+        return None
+        
+    return [{"Author": c.get('username'), "Text": c.get('text'),
+             "Category": get_sentiment(c.get('text')), "Source": media_id} 
+            for c in response.get('data', [])]
 
-url_input = st.text_area("Paste TikTok URLs:", height=100)
+# --- 3. UI LAYOUT ---
+st.set_page_config(page_title="Multi-Platform Sentiment Scraper", layout="wide")
+st.title("📊 Social Media Sentiment Scraper")
+st.markdown("Download comments and analyze sentiment from **YouTube**, **Facebook**, or **Instagram**.")
 
-if st.button("🚀 Analyze"):
-    urls = [u.strip() for u in url_input.split('\n') if u.strip()]
-    if urls:
-        for url in urls:
-            st.write(f"🔍 Checking: {url}")
-            result = scrape_tiktok(url)
+# Sidebar Settings
+st.sidebar.header("Configuration")
+platform = st.sidebar.selectbox("Target Platform", ["YouTube", "Facebook", "Instagram"])
+token = ""
+if platform in ["Facebook", "Instagram"]:
+    token = st.sidebar.text_input(f"Enter {platform} Page Access Token", type="password")
+    st.sidebar.info("💡 Ensure your token has 'instagram_basic' and 'pages_read_engagement' permissions.")
+
+uploaded_file = st.sidebar.file_uploader("Upload CSV/Excel of IDs/URLs", type=["csv", "xlsx"])
+
+# Main Input Area
+input_label = "URLs" if platform == "YouTube" else "Post/Media IDs"
+raw_input = st.text_area(f"Paste {platform} {input_label} (one per line):", height=150)
+
+# Process Input
+items = []
+if uploaded_file:
+    df_in = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+    items = df_in.iloc[:, 0].dropna().tolist()
+elif raw_input:
+    items = [i.strip() for i in raw_input.split('\n') if i.strip()]
+
+# --- 4. EXECUTION ---
+if st.button(f"Analyze {platform}"):
+    if not items:
+        st.error("Please provide IDs or URLs to analyze.")
+    elif platform in ["Facebook", "Instagram"] and not token:
+        st.error("Access Token is required for Meta platforms.")
+    else:
+        all_data = []
+        progress_bar = st.progress(0)
+        
+        for idx, item in enumerate(items):
+            if platform == "YouTube":
+                data = get_yt_comments(item)
+            elif platform == "Facebook":
+                data = get_fb_comments(item, token)
+            elif platform == "Instagram":
+                data = get_ig_comments(item, token)
             
-            if result == "EMPTY":
-                st.error("TikTok served an empty response. This means your cookies and proxy IP are out of sync.")
-                st.info("👉 Action: Re-export cookies while using your proxy in your browser.")
-            elif isinstance(result, list):
-                df = pd.DataFrame(result)
-                st.success(f"Found {len(df)} comments!")
-                st.dataframe(df[['author', 'text']])
-            else:
-                st.error(result)
+            if data:
+                all_data.extend(data)
+            progress_bar.progress((idx + 1) / len(items))
+        
+        if all_data:
+            df = pd.DataFrame(all_data)
             
-            # Anti-ban sleep
-            time.sleep(random.uniform(5, 10))
+            # Dashboard
+            col1, col2 = st.columns([1, 2])
+            with col1:
+                st.subheader("Sentiment Distribution")
+                st.bar_chart(df['Category'].value_counts())
+            
+            with col2:
+                st.subheader("Raw Data")
+                st.dataframe(df, use_container_width=True)
+            
+            # Download
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Download Results (CSV)", csv, f"{platform.lower()}_sentiment.csv", "text/csv")
+        else:
+            st.error("No comments found. Check your IDs or Token permissions.")
