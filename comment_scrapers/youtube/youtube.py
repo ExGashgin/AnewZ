@@ -65,4 +65,4 @@ uploaded_file = st.sidebar.file_uploader("Upload CSV or Excel", type=["csv", "xl
 
 if uploaded_file:
     if uploaded_file.name.endswith('.csv'):
-        df_input = pd.read_csv(uploaded_file
+        df_input = pd.read_csv(uploaded_file)
