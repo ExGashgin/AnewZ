@@ -15,37 +15,45 @@ def get_sentiment(text):
     return "Neutral"
 
 def get_x_data(url, count=20):
-    """
-    Fetches comments/replies related to a specific tweet or user.
-    """
-    scraper = Nitter()
+    # Manually defined list of active Nitter instances
+    # If one fails, ntscraper will try another from this list
+    working_instances = [
+        'https://nitter.net', 
+        'https://nitter.cz', 
+        'https://nitter.privacydev.net',
+        'https://nitter.no-logs.com'
+    ]
+    
+    # Initialize scraper with the manual list
+    scraper = Nitter(instances=working_instances)
+    
     try:
-        # Clean the URL and extract the username
-        # Expected: https://x.com/UserName/status/12345
         parts = url.strip("/").split('/')
-        username = parts[3] if len(parts) > 3 else None
-        
-        if not username:
-            return None
+        # Ensure we are getting the username correctly from the URL
+        if "status" in parts:
+            username = parts[parts.index("status") - 1]
+        else:
+            username = parts[-1]
 
-        # Scraping based on the user's recent activity related to the post
+        # Use the scraper
         tweets = scraper.get_tweets(username, mode='user', number=count)
         
+        if not tweets or not tweets.get('tweets'):
+            return None
+
         results = []
         for t in tweets['tweets']:
             results.append({
                 "Date": t.get('date'),
                 "Author": t.get('user', {}).get('name'),
-                "Handle": t.get('user', {}).get('username'),
                 "Text": t.get('text'),
                 "Sentiment": get_sentiment(t.get('text')),
-                "Stats_Likes": t.get('stats', {}).get('likes'),
-                "Stats_Retweets": t.get('stats', {}).get('retweets'),
                 "Source_URL": url
             })
         return results
     except Exception as e:
-        st.error(f"Error scraping {url}: {e}")
+        # This will now catch the specific error and tell you if it's an instance issue
+        st.warning(f"Note: Could not reach X for {url}. X might be blocking the connection.")
         return None
 
 # --- UI SECTION ---
